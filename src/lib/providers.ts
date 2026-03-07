@@ -1,8 +1,9 @@
 /**
  * Provider Types & UI Metadata — single source of truth for the frontend.
  *
- * NOTE: When adding a new provider type, also update
- * electron/utils/provider-registry.ts (env vars, models, configs).
+ * NOTE: Backend provider metadata is being refactored toward the new
+ * account-based registry, but the renderer still keeps a local compatibility
+ * layer so TypeScript project boundaries remain stable during the migration.
  */
 
 export const PROVIDER_TYPES = [
@@ -20,6 +21,20 @@ export const PROVIDER_TYPES = [
   'custom',
 ] as const;
 export type ProviderType = (typeof PROVIDER_TYPES)[number];
+
+export const BUILTIN_PROVIDER_TYPES = [
+  'anthropic',
+  'openai',
+  'google',
+  'openrouter',
+  'ark',
+  'moonshot',
+  'siliconflow',
+  'minimax-portal',
+  'minimax-portal-cn',
+  'qwen-portal',
+  'ollama',
+] as const;
 
 export const OLLAMA_PLACEHOLDER_API_KEY = 'ollama-local';
 
@@ -46,26 +61,16 @@ export interface ProviderTypeInfo {
   name: string;
   icon: string;
   placeholder: string;
-  /** Model brand name for display (e.g. "Claude", "GPT") */
   model?: string;
   requiresApiKey: boolean;
-  /** Pre-filled base URL (for proxy/compatible providers like SiliconFlow) */
   defaultBaseUrl?: string;
-  /** Whether the user can edit the base URL in setup */
   showBaseUrl?: boolean;
-  /** Whether to show a Model ID input field (for providers where user picks the model) */
   showModelId?: boolean;
-  /** Whether the Model ID input should only be shown in developer mode */
   showModelIdInDevModeOnly?: boolean;
-  /** Default / example model ID placeholder */
   modelIdPlaceholder?: string;
-  /** Default model ID to pre-fill */
   defaultModelId?: string;
-  /** Whether this provider uses OAuth device flow instead of an API key */
   isOAuth?: boolean;
-  /** Whether this provider also accepts a direct API key (in addition to OAuth) */
   supportsApiKey?: boolean;
-  /** URL where users can apply for the API Key */
   apiKeyUrl?: string;
 }
 

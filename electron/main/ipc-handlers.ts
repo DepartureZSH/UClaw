@@ -54,6 +54,7 @@ import { deviceOAuthManager, OAuthProviderType } from '../utils/device-oauth';
 import { applyProxySettings } from './proxy';
 import { proxyAwareFetch } from '../utils/proxy-fetch';
 import { getRecentTokenUsageHistory } from '../utils/token-usage';
+import { getProviderService } from '../services/providers/provider-service';
 
 /**
  * For custom/ollama providers, derive a unique key for OpenClaw config files
@@ -995,6 +996,8 @@ function registerDeviceOAuthHandlers(mainWindow: BrowserWindow): void {
  * Provider-related IPC handlers
  */
 function registerProviderHandlers(gatewayManager: GatewayManager): void {
+  const providerService = getProviderService();
+
   // Listen for OAuth success to automatically restart the Gateway with new tokens/configs.
   // Use a longer debounce (8s) so that provider:setDefault — which writes the full config
   // and then calls debouncedRestart(2s) — has time to fire and coalesce into a single
@@ -1008,6 +1011,19 @@ function registerProviderHandlers(gatewayManager: GatewayManager): void {
   // Get all providers with key info
   ipcMain.handle('provider:list', async () => {
     return await getAllProvidersWithKeyInfo();
+  });
+
+  // New provider-service endpoints used by the account-based refactor.
+  ipcMain.handle('provider:listVendors', async () => {
+    return await providerService.listVendors();
+  });
+
+  ipcMain.handle('provider:listAccounts', async () => {
+    return await providerService.listAccounts();
+  });
+
+  ipcMain.handle('provider:getAccount', async (_, accountId: string) => {
+    return await providerService.getAccount(accountId);
   });
 
   // Get a specific provider
