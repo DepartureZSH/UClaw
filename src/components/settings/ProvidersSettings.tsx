@@ -72,16 +72,19 @@ function fallbackModelsEqual(a?: string[], b?: string[]): boolean {
   return left.length === right.length && left.every((model, index) => model === right[index]);
 }
 
-function getAuthModeLabel(authMode: ProviderAccount['authMode']): string {
+function getAuthModeLabel(
+  authMode: ProviderAccount['authMode'],
+  t: (key: string) => string
+): string {
   switch (authMode) {
     case 'api_key':
-      return 'API Key';
+      return t('aiProviders.authModes.apiKey');
     case 'oauth_device':
-      return 'OAuth Device';
+      return t('aiProviders.authModes.oauthDevice');
     case 'oauth_browser':
-      return 'OAuth Browser';
+      return t('aiProviders.authModes.oauthBrowser');
     case 'local':
-      return 'Local';
+      return t('aiProviders.authModes.local');
     default:
       return authMode;
   }
@@ -174,14 +177,6 @@ export function ProvidersSettings() {
 
   return (
     <div className="space-y-4">
-      {accounts.length > 0 && (
-        <ProviderAccountsOverview
-          accounts={accounts}
-          vendors={vendors}
-          defaultAccountId={defaultAccountId}
-        />
-      )}
-
       <div className="flex justify-end">
         <Button size="sm" onClick={() => setShowAddDialog(true)}>
           <Plus className="h-4 w-4 mr-2" />
@@ -256,58 +251,6 @@ export function ProvidersSettings() {
         />
       )}
     </div>
-  );
-}
-
-function ProviderAccountsOverview({
-  accounts,
-  vendors,
-  defaultAccountId,
-}: {
-  accounts: ProviderAccount[];
-  vendors: ProviderVendorInfo[];
-  defaultAccountId: string | null;
-}) {
-  const vendorMap = new Map(vendors.map((vendor) => [vendor.id, vendor]));
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle>Provider Accounts</CardTitle>
-        <CardDescription>
-          Account-aware provider metadata is now available and will back the next UI migration step.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {accounts.map((account) => {
-          const vendor = vendorMap.get(account.vendorId);
-
-          return (
-            <div
-              key={account.id}
-              className="flex items-center justify-between rounded-lg border p-3"
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium truncate">{account.label}</span>
-                  <Badge variant="secondary">{vendor?.name || account.vendorId}</Badge>
-                  <Badge variant="outline">{getAuthModeLabel(account.authMode)}</Badge>
-                  {account.id === defaultAccountId || account.isDefault ? (
-                    <Badge>Default</Badge>
-                  ) : null}
-                </div>
-                <div className="mt-1 text-sm text-muted-foreground truncate">
-                  {account.model || 'No model selected'}
-                </div>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {vendor?.supportsMultipleAccounts ? 'multi-account ready' : 'singleton vendor'}
-              </div>
-            </div>
-          );
-        })}
-      </CardContent>
-    </Card>
   );
 }
 
@@ -466,9 +409,14 @@ function ProviderCard({
               <div className="flex items-center gap-2">
                 <span className="font-semibold">{account.label}</span>
                 <Badge variant="secondary">{vendor?.name || account.vendorId}</Badge>
-                <Badge variant="outline">{getAuthModeLabel(account.authMode)}</Badge>
+                <Badge variant="outline">{getAuthModeLabel(account.authMode, t)}</Badge>
               </div>
-              <span className="text-xs text-muted-foreground capitalize">{account.vendorId}</span>
+              <div className="mt-1 space-y-0.5">
+                <p className="text-xs text-muted-foreground capitalize">{account.vendorId}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {t('aiProviders.dialog.modelId')}: {account.model || t('aiProviders.card.none')}
+                </p>
+              </div>
             </div>
           </div>
         </div>

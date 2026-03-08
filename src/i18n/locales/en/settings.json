@@ -13,6 +13,19 @@
   "aiProviders": {
     "title": "AI Providers",
     "description": "Configure your AI model providers and API keys",
+    "overview": {
+      "title": "Provider Accounts",
+      "description": "A summary of the provider accounts and models currently configured.",
+      "noModelSelected": "No model selected",
+      "multiAccountReady": "Multi-account ready",
+      "singletonVendor": "Single-account vendor"
+    },
+    "authModes": {
+      "apiKey": "API Key",
+      "oauthDevice": "OAuth Device",
+      "oauthBrowser": "OAuth Browser",
+      "local": "Local"
+    },
     "sections": {
       "model": "Model Settings",
       "fallback": "Fallback Settings"
