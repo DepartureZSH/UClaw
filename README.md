@@ -255,6 +255,15 @@ ClawX employs a **dual-process architecture** with a unified host API layer. The
 - **Secure Storage**: API keys and sensitive data leverage the operating system's native secure storage mechanisms
 - **CORS-Safe by Design**: Local HTTP access is proxied by Main, preventing renderer-side CORS issues
 
+### Process Model & Gateway Troubleshooting
+
+- ClawX is an Electron app, so **one app instance normally appears as multiple OS processes** (main/renderer/zygote/utility). This is expected.
+- The OpenClaw Gateway listener should still be **single-owner**: only one process should listen on `127.0.0.1:18789`.
+- To verify the active listener:
+  - macOS/Linux: `lsof -nP -iTCP:18789 -sTCP:LISTEN`
+  - Windows (PowerShell): `Get-NetTCPConnection -LocalPort 18789 -State Listen`
+- Clicking the window close button (`X`) hides ClawX to tray; it does **not** fully quit the app. Use tray menu **Quit ClawX** for complete shutdown.
+
 ---
 
 ## Use Cases

@@ -255,6 +255,15 @@ ClawX 采用 **双进程 + Host API 统一接入架构**。渲染进程只调用
 - **安全存储**：API 密钥和敏感数据利用操作系统原生的安全存储机制
 - **CORS 安全**：本地 HTTP 请求由主进程代理，避免渲染进程跨域问题
 
+### 进程模型与 Gateway 排障
+
+- ClawX 基于 Electron，**单个应用实例出现多个系统进程是正常现象**（main/renderer/zygote/utility）。
+- 但 OpenClaw Gateway 监听应始终保持**单实例**：`127.0.0.1:18789` 只能有一个监听者。
+- 可用以下命令确认监听进程：
+  - macOS/Linux：`lsof -nP -iTCP:18789 -sTCP:LISTEN`
+  - Windows（PowerShell）：`Get-NetTCPConnection -LocalPort 18789 -State Listen`
+- 点击窗口关闭按钮（`X`）默认只是最小化到托盘，并不会完全退出应用。请在托盘菜单中选择 **Quit ClawX** 执行完整退出。
+
 ---
 
 ## 使用场景

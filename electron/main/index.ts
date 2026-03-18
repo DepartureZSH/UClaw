@@ -27,6 +27,11 @@ import {
   createMainWindowFocusState,
   requestSecondInstanceFocus,
 } from './main-window-focus';
+import {
+  createQuitLifecycleState,
+  markQuitCleanupCompleted,
+  requestQuitLifecycleAction,
+} from './quit-lifecycle';
 import { getSetting } from '../utils/store';
 import { ensureBuiltinSkillsInstalled, ensurePreinstalledSkillsInstalled } from '../utils/skill-config';
 import { ensureAllBundledPluginsInstalled } from '../utils/plugin-install';
@@ -70,6 +75,7 @@ if (process.platform === 'linux') {
 // The losing process must exit immediately so it never reaches Gateway startup.
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
+  console.info('[ClawX] Another instance already holds the single-instance lock; exiting duplicate process');
   app.exit(0);
 }
 
@@ -80,6 +86,7 @@ let clawHubService!: ClawHubService;
 let hostEventBus!: HostEventBus;
 let hostApiServer: Server | null = null;
 const mainWindowFocusState = createMainWindowFocusState();
+const quitLifecycleState = createQuitLifecycleState();
 
 /**
  * Resolve the icons directory path (works in both dev and packaged mode)
@@ -216,7 +223,7 @@ async function initialize(): Promise<void> {
   logger.init();
   logger.info('=== ClawX Application Starting ===');
   logger.debug(
-    `Runtime: platform=${process.platform}/${process.arch}, electron=${process.versions.electron}, node=${process.versions.node}, packaged=${app.isPackaged}`
+    `Runtime: platform=${process.platform}/${process.arch}, electron=${process.versions.electron}, node=${process.versions.node}, packaged=${app.isPackaged}, pid=${process.pid}, ppid=${process.ppid}`
   );
 
   // Warm up network optimization (non-blocking)
@@ -461,14 +468,37 @@ if (gotTheLock) {
     }
   });
 
-  app.on('before-quit', () => {
+  app.on('before-quit', (event) => {
     setQuitting();
+    const action = requestQuitLifecycleAction(quitLifecycleState);
+
+    if (action === 'allow-quit') {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (action === 'cleanup-in-progress') {
+      logger.debug('Quit requested while cleanup already in progress; waiting for shutdown task to finish');
+      return;
+    }
+
     hostEventBus.closeAll();
     hostApiServer?.close();
-    // Fire-and-forget: do not await gatewayManager.stop() here.
-    // Awaiting inside before-quit can stall Electron's quit sequence.
-    void gatewayManager.stop().catch((err) => {
+
+    const stopPromise = gatewayManager.stop().catch((err) => {
       logger.warn('gatewayManager.stop() error during quit:', err);
+    });
+    const timeoutPromise = new Promise<'timeout'>((resolve) => {
+      setTimeout(() => resolve('timeout'), 5000);
+    });
+
+    void Promise.race([stopPromise.then(() => 'stopped' as const), timeoutPromise]).then((result) => {
+      if (result === 'timeout') {
+        logger.warn('Gateway shutdown timed out during app quit; proceeding with forced quit');
+      }
+      markQuitCleanupCompleted(quitLifecycleState);
+      app.quit();
     });
   });
 }

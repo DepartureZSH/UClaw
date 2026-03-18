@@ -241,6 +241,7 @@ export class GatewayManager extends EventEmitter {
         onConnectedToExistingGateway: () => {
           this.ownsProcess = false;
           this.setStatus({ pid: undefined });
+          logger.info(`Gateway manager attached to external process on port ${this.status.port} (ownsProcess=false)`);
           this.startHealthCheck();
         },
         waitForPortFree: async (port) => {
@@ -714,6 +715,7 @@ export class GatewayManager extends EventEmitter {
 
     this.process = child;
     this.ownsProcess = true;
+    logger.debug(`Gateway manager now owns process pid=${child.pid ?? 'unknown'}`);
     this.lastSpawnSummary = lastSpawnSummary;
   }
 
