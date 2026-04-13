@@ -109,15 +109,26 @@ function buildChatEventDedupeKey(eventState: string, event: Record<string, unkno
   return null;
 }
 
+function getFinalMessageIdDedupeKey(eventState: string, event: Record<string, unknown>): string | null {
+  if (eventState !== 'final') return null;
+  const msg = (event.message && typeof event.message === 'object')
+    ? event.message as Record<string, unknown>
+    : null;
+  if (msg?.id != null) return `final-msgid|${String(msg.id)}`;
+  return null;
+}
+
 function isDuplicateChatEvent(eventState: string, event: Record<string, unknown>): boolean {
   const key = buildChatEventDedupeKey(eventState, event);
-  if (!key) return false;
+  const msgKey = getFinalMessageIdDedupeKey(eventState, event);
+  if (!key && !msgKey) return false;
   const now = Date.now();
   pruneChatEventDedupe(now);
-  if (_chatEventDedupe.has(key)) {
+  if ((key && _chatEventDedupe.has(key)) || (msgKey && _chatEventDedupe.has(msgKey))) {
     return true;
   }
-  _chatEventDedupe.set(key, now);
+  if (key) _chatEventDedupe.set(key, now);
+  if (msgKey) _chatEventDedupe.set(msgKey, now);
   return false;
 }
 
