@@ -9,7 +9,7 @@ const getChannelStatusDiagnosticsMock = vi.fn();
 const sendJsonMock = vi.fn();
 const readLogFileMock = vi.fn();
 
-const testOpenClawConfigDir = join(tmpdir(), 'clawx-tests', 'diagnostics-routes-openclaw');
+const testOpenClawConfigDir = join(tmpdir(), 'uclaw-tests', 'diagnostics-routes-openclaw');
 
 vi.mock('@electron/api/routes/channels', () => ({
   buildChannelAccountsView: (...args: unknown[]) => buildChannelAccountsViewMock(...args),
@@ -63,7 +63,7 @@ describe('handleDiagnosticsRoutes', () => {
       lastChannelsStatusOkAt: 100,
       lastChannelsStatusFailureAt: 200,
     });
-    readLogFileMock.mockResolvedValue('clawx-log-tail');
+    readLogFileMock.mockResolvedValue('uclaw-log-tail');
   });
 
   afterAll(() => {
@@ -95,7 +95,7 @@ describe('handleDiagnosticsRoutes', () => {
     const payload = sendJsonMock.mock.calls.at(-1)?.[2] as {
       platform?: string;
       channels?: Array<{ channelType: string; status: string }>;
-      clawxLogTail?: string;
+      uclawLogTail?: string;
       gatewayLogTail?: string;
       gatewayErrLogTail?: string;
       gateway?: { state?: string; reasons?: string[] };
@@ -107,7 +107,7 @@ describe('handleDiagnosticsRoutes', () => {
         status: 'degraded',
       }),
     ]);
-    expect(payload.clawxLogTail).toBe('clawx-log-tail');
+    expect(payload.uclawLogTail).toBe('uclaw-log-tail');
     expect(payload.gatewayLogTail).toContain('gateway-line-1');
     expect(payload.gatewayErrLogTail).toBe('');
     expect(payload.gateway?.state).toBe('degraded');

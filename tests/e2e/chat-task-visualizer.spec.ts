@@ -148,7 +148,7 @@ const childTranscriptMessages = [
   },
 ];
 
-test.describe('ClawX chat execution graph', () => {
+test.describe('UClaw chat execution graph', () => {
   test('renders internal yield status and linked subagent branch from mocked IPC', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
 
@@ -310,7 +310,7 @@ test.describe('ClawX chat execution graph', () => {
           }
           return { success: true, result: {} };
         });
-        (globalThis as typeof globalThis & { __clawxSendPayloads?: Array<{ message?: string; sessionKey?: string }> }).__clawxSendPayloads = sendPayloads;
+        (globalThis as typeof globalThis & { __uclawSendPayloads?: Array<{ message?: string; sessionKey?: string }> }).__uclawSendPayloads = sendPayloads;
       });
 
       const page = await getStableWindow(app);
@@ -330,8 +330,8 @@ test.describe('ClawX chat execution graph', () => {
       await expect.poll(async () => {
         return await app.evaluate(() => {
           const sendPayloads = (globalThis as typeof globalThis & {
-            __clawxSendPayloads?: Array<{ message?: string; sessionKey?: string }>;
-          }).__clawxSendPayloads || [];
+            __uclawSendPayloads?: Array<{ message?: string; sessionKey?: string }>;
+          }).__uclawSendPayloads || [];
           return sendPayloads.length;
         });
       }).toBe(1);

@@ -114,7 +114,7 @@ async function closeElectronApp(app: ElectronApplication, timeoutMs = 5_000): Pr
   }
 }
 
-async function launchClawXElectron(
+async function launchUClawElectron(
   homeDir: string,
   userDataDir: string,
   options: LaunchElectronOptions = {},
@@ -134,10 +134,10 @@ async function launchClawXElectron(
       APPDATA: join(homeDir, 'AppData', 'Roaming'),
       LOCALAPPDATA: join(homeDir, 'AppData', 'Local'),
       XDG_CONFIG_HOME: join(homeDir, '.config'),
-      CLAWX_E2E: '1',
-      CLAWX_USER_DATA_DIR: userDataDir,
-      ...(options.skipSetup ? { CLAWX_E2E_SKIP_SETUP: '1' } : {}),
-      CLAWX_PORT_CLAWX_HOST_API: String(hostApiPort),
+      UCLAW_E2E: '1',
+      UCLAW_USER_DATA_DIR: userDataDir,
+      ...(options.skipSetup ? { UCLAW_E2E_SKIP_SETUP: '1' } : {}),
+      UCLAW_PORT_UCLAW_HOST_API: String(hostApiPort),
     },
     timeout: 90_000,
   });
@@ -145,7 +145,7 @@ async function launchClawXElectron(
 
 export const test = base.extend<ElectronFixtures>({
   homeDir: async ({ browserName: _browserName }, provideHomeDir) => {
-    const homeDir = await mkdtemp(join(tmpdir(), 'clawx-e2e-home-'));
+    const homeDir = await mkdtemp(join(tmpdir(), 'uclaw-e2e-home-'));
     await mkdir(join(homeDir, '.config'), { recursive: true });
     await mkdir(join(homeDir, 'AppData', 'Local'), { recursive: true });
     await mkdir(join(homeDir, 'AppData', 'Roaming'), { recursive: true });
@@ -157,7 +157,7 @@ export const test = base.extend<ElectronFixtures>({
   },
 
   userDataDir: async ({ browserName: _browserName }, provideUserDataDir) => {
-    const userDataDir = await mkdtemp(join(tmpdir(), 'clawx-e2e-user-data-'));
+    const userDataDir = await mkdtemp(join(tmpdir(), 'uclaw-e2e-user-data-'));
     try {
       await provideUserDataDir(userDataDir);
     } finally {
@@ -166,7 +166,7 @@ export const test = base.extend<ElectronFixtures>({
   },
 
   launchElectronApp: async ({ homeDir, userDataDir }, provideLauncher) => {
-    await provideLauncher(async (options?: LaunchElectronOptions) => await launchClawXElectron(homeDir, userDataDir, options));
+    await provideLauncher(async (options?: LaunchElectronOptions) => await launchUClawElectron(homeDir, userDataDir, options));
   },
 
   electronApp: async ({ launchElectronApp }, provideElectronApp) => {

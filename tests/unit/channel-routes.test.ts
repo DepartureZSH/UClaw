@@ -15,7 +15,7 @@ const setChannelDefaultAccountMock = vi.fn();
 const assignChannelAccountToAgentMock = vi.fn();
 const clearChannelBindingMock = vi.fn();
 const parseJsonBodyMock = vi.fn();
-const testOpenClawConfigDir = join(tmpdir(), 'clawx-tests', 'channel-routes-openclaw');
+const testOpenClawConfigDir = join(tmpdir(), 'uclaw-tests', 'channel-routes-openclaw');
 
 vi.mock('@electron/utils/channel-config', () => ({
   cleanupDanglingWeChatPluginState: vi.fn(),

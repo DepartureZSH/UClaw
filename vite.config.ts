@@ -89,6 +89,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Force IPv4 so Electron/Chromium (which connects via 127.0.0.1) can reach
+    // the dev server. Vite 7 + Node.js 18+ resolve 'localhost' to ::1 (IPv6)
+    // by default on Windows, causing ERR_CONNECTION_REFUSED.
+    host: '127.0.0.1',
   },
   build: {
     outDir: 'dist',

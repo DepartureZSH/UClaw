@@ -4,6 +4,7 @@ import 'zx/globals';
 import { readFileSync, existsSync, mkdirSync, rmSync, cpSync, writeFileSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -60,24 +61,49 @@ function shouldCopySkillFile(srcPath) {
   return true;
 }
 
-async function extractArchive(archiveFileName, cwd) {
-  const prevCwd = $.cwd;
-  $.cwd = cwd;
-  try {
-    try {
-      await $`tar -xf ${archiveFileName}`;
-      return;
-    } catch (tarError) {
-      if (process.platform === 'win32') {
-        // Some Windows images expose bsdtar instead of tar.
-        await $`bsdtar -xf ${archiveFileName}`;
-        return;
+function extractArchive(archiveFileName, cwd) {
+  const result = spawnSync('tar', ['-xf', archiveFileName], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+    cwd,
+  });
+  if (result.error || result.status !== 0) {
+    if (process.platform === 'win32') {
+      // Some Windows images expose bsdtar instead of tar.
+      const result2 = spawnSync('bsdtar', ['-xf', archiveFileName], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        encoding: 'utf8',
+        cwd,
+      });
+      if (result2.error) throw result2.error;
+      if (result2.status !== 0) {
+        const stderr = result2.stderr?.trim() || result2.stdout?.trim() || '';
+        throw new Error(`bsdtar failed (exit ${result2.status}): ${stderr}`);
       }
-      throw tarError;
+      return;
     }
-  } finally {
-    $.cwd = prevCwd;
+    if (result.error) throw result.error;
+    const stderr = result.stderr?.trim() || result.stdout?.trim() || '';
+    throw new Error(`tar failed (exit ${result.status}): ${stderr}`);
   }
+}
+
+function git(args, opts = {}) {
+  // Use spawnSync to invoke git directly, bypassing any shell (cmd/WSL).
+  // On Windows, routing git through a shell can trigger WSL bash integration
+  // even when no Linux distribution is installed, causing a fatal spawn error.
+  const result = spawnSync('git', args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+    ...opts,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const stderr = result.stderr?.trim() || '';
+    const stdout = result.stdout?.trim() || '';
+    throw new Error(`git ${args[0]} failed (exit ${result.status}): ${stderr || stdout}`);
+  }
+  return result.stdout ?? '';
 }
 
 async function fetchSparseRepo(repo, ref, paths, checkoutDir) {
@@ -88,16 +114,16 @@ async function fetchSparseRepo(repo, ref, paths, checkoutDir) {
   const archivePath = join(checkoutDir, archiveFileName);
   const archivePaths = [...new Set(paths.map(normalizeRepoPath))];
 
-  await $`git init ${gitCheckoutDir}`;
-  await $`git -C ${gitCheckoutDir} remote add origin ${remote}`;
-  await $`git -C ${gitCheckoutDir} fetch --depth 1 origin ${ref}`;
+  git(['init', gitCheckoutDir]);
+  git(['-C', gitCheckoutDir, 'remote', 'add', 'origin', remote]);
+  git(['-C', gitCheckoutDir, 'fetch', '--depth', '1', 'origin', ref]);
   // Do not checkout working tree on Windows: upstream repos may contain
   // Windows-invalid paths. Export only requested directories via git archive.
-  await $`git -C ${gitCheckoutDir} archive --format=tar --output ${archiveFileName} FETCH_HEAD ${archivePaths}`;
-  await extractArchive(archiveFileName, checkoutDir);
+  git(['-C', gitCheckoutDir, 'archive', '--format=tar', `--output=${archiveFileName}`, 'FETCH_HEAD', ...archivePaths]);
+  extractArchive(archiveFileName, checkoutDir);
   rmSync(archivePath, { force: true });
 
-  const commit = (await $`git -C ${gitCheckoutDir} rev-parse FETCH_HEAD`).stdout.trim();
+  const commit = git(['-C', gitCheckoutDir, 'rev-parse', 'FETCH_HEAD']).trim();
   return commit;
 }
 

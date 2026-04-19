@@ -15,7 +15,7 @@ let settingsStoreInstance: any = null;
  * Generate a random token for gateway authentication
  */
 function generateToken(): string {
-  return `clawx-${randomBytes(16).toString('hex')}`;
+  return `uclaw-${randomBytes(16).toString('hex')}`;
 }
 
 /**
@@ -72,13 +72,17 @@ function getSystemLocale(): string {
 }
 
 function createDefaultSettings(): AppSettings {
+  // In portable USB mode all network-touching defaults are disabled so the
+  // app works fully offline and leaves no footprint on the host machine.
+  const isPortable = !!process.env.UCLAW_PORTABLE_ROOT;
+
   return {
     // General
     theme: 'system',
     language: resolveSupportedLanguage(getSystemLocale()),
     startMinimized: false,
-    launchAtStartup: false,
-    telemetryEnabled: true,
+    launchAtStartup: false,             // never auto-start from USB
+    telemetryEnabled: !isPortable,
     machineId: '',
     hasReportedInstall: false,
 
@@ -95,7 +99,7 @@ function createDefaultSettings(): AppSettings {
 
     // Update
     updateChannel: 'stable',
-    autoCheckUpdate: true,
+    autoCheckUpdate: !isPortable,
     autoDownloadUpdate: false,
     skippedVersions: [],
 

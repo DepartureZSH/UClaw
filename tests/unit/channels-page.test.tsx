@@ -447,7 +447,7 @@ describe('Channels page status refresh', () => {
             consecutiveHeartbeatMisses: 1,
           },
           channels: [],
-          clawxLogTail: 'clawx',
+          uclawLogTail: 'uclaw',
           gatewayLogTail: 'gateway',
           gatewayErrLogTail: '',
         };
@@ -626,7 +626,7 @@ describe('Channels page status refresh', () => {
             consecutiveHeartbeatMisses: 1,
           },
           channels: [],
-          clawxLogTail: `clawx-${diagnosticsFetchCount}`,
+          uclawLogTail: `uclaw-${diagnosticsFetchCount}`,
           gatewayLogTail: 'gateway',
           gatewayErrLogTail: '',
         };

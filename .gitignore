@@ -73,3 +73,16 @@ package-lock.json
 # Generated extension bridges (created by scripts/generate-ext-bridge.mjs)
 electron/extensions/_ext-bridge.generated.ts
 src/extensions/_ext-bridge.generated.ts
+
+# Portable mode data directory (created by user at runtime, never commit)
+data/
+
+# Preinstalled skills lock (generated at build time)
+build/preinstalled-skills/
+resources/skills/.preinstalled-lock.json
+
+# electron-builder temp artifacts
+release/builder-effective-config.yaml
+release/win-unpacked/
+release/mac/
+release/linux-unpacked/

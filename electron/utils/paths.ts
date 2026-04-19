@@ -24,7 +24,7 @@ function getElectronApp() {
     return (require('electron') as typeof import('electron')).app;
   }
 
-  const fallbackUserData = process.env.CLAWX_USER_DATA_DIR?.trim() || join(homedir(), '.clawx');
+  const fallbackUserData = process.env.UCLAW_USER_DATA_DIR?.trim() || join(homedir(), '.uclaw');
   const fallbackAppPath = process.cwd();
   const fallbackApp: ElectronAppLike = {
     isPackaged: false,
@@ -48,9 +48,13 @@ export function expandPath(path: string): string {
 }
 
 /**
- * Get OpenClaw config directory
+ * Get OpenClaw config directory.
+ * In portable USB mode (UCLAW_PORTABLE_ROOT is set), resolves to
+ * <portable-root>/openclaw instead of ~/.openclaw.
  */
 export function getOpenClawConfigDir(): string {
+  const portableRoot = process.env.UCLAW_PORTABLE_ROOT;
+  if (portableRoot) return join(portableRoot, 'openclaw');
   return join(homedir(), '.openclaw');
 }
 
@@ -62,21 +66,25 @@ export function getOpenClawSkillsDir(): string {
 }
 
 /**
- * Get ClawX config directory
+ * Get UClaw config directory.
+ * In portable USB mode (UCLAW_PORTABLE_ROOT is set), resolves to
+ * <portable-root>/uclaw instead of ~/.uclaw.
  */
-export function getClawXConfigDir(): string {
-  return join(homedir(), '.clawx');
+export function getUClawConfigDir(): string {
+  const portableRoot = process.env.UCLAW_PORTABLE_ROOT;
+  if (portableRoot) return join(portableRoot, 'uclaw');
+  return join(homedir(), '.uclaw');
 }
 
 /**
- * Get ClawX logs directory
+ * Get UClaw logs directory
  */
 export function getLogsDir(): string {
   return join(getElectronApp().getPath('userData'), 'logs');
 }
 
 /**
- * Get ClawX data directory
+ * Get UClaw data directory
  */
 export function getDataDir(): string {
   return getElectronApp().getPath('userData');

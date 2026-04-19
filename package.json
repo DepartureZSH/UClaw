@@ -1,5 +1,5 @@
 {
-    "name": "clawx",
+    "name": "UClaw",
     "version": "0.3.10-beta.2",
     "pnpm": {
         "onlyBuiltDependencies": [
@@ -26,9 +26,9 @@
             ]
         }
     },
-    "description": "ClawX - Graphical AI Assistant based on OpenClaw",
+    "description": "UClaw - Graphical AI Assistant based on OpenClaw",
     "main": "dist-electron/main/index.js",
-    "author": "ClawX Team",
+    "author": "UClaw Team",
     "license": "MIT",
     "private": true,
     "scripts": {
@@ -60,7 +60,11 @@
         "package:mac": "pnpm run package && electron-builder --mac --publish never",
         "package:mac:local": "SKIP_PREINSTALLED_SKILLS=1 pnpm run package && electron-builder --mac --publish never",
         "package:win": "pnpm run prep:win-binaries && pnpm run package && electron-builder --win --publish never",
+        "package:win:portable": "pnpm run prep:win-binaries && pnpm run package && electron-builder --win zip --publish never",
+        "package:mac:portable": "pnpm run package && electron-builder --mac zip --publish never",
+        "package:linux:portable": "pnpm run package && electron-builder --linux zip --publish never",
         "package:linux": "pnpm run package && electron-builder --linux --publish never",
+        "package:portable:all": "pnpm run package:win:portable && pnpm run package:mac:portable && pnpm run package:linux:portable && node scripts/assemble-portable-usb.mjs",
         "release": "pnpm run uv:download && pnpm run package && electron-builder --publish always",
         "version:patch": "pnpm version patch",
         "version:minor": "pnpm version minor",

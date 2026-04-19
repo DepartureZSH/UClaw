@@ -8,6 +8,7 @@ import siliconflow from './siliconflow.svg';
 import minimaxPortal from './minimax.svg';
 import qwenPortal from './qwen.svg';
 import ollama from './ollama.svg';
+import newApi from './new-api.svg';
 import custom from './custom.svg';
 
 export const providerIcons: Record<string, string> = {
@@ -23,5 +24,6 @@ export const providerIcons: Record<string, string> = {
     'minimax-portal-cn': minimaxPortal,
     'modelstudio': qwenPortal,
     ollama,
+    'new-api': newApi,
     custom,
 };

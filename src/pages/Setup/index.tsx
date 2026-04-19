@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useGatewayStore } from '@/stores/gateway';
@@ -40,6 +42,12 @@ const STEP = {
   RUNTIME: 1,
   INSTALLING: 2,
   COMPLETE: 3,
+} as const;
+
+const PORTABLE_STEP = {
+  WELCOME: 0,
+  CONFIG: 1,
+  COMPLETE: 2,
 } as const;
 
 const getSteps = (t: TFunction): SetupStep[] => [
@@ -65,6 +73,12 @@ const getSteps = (t: TFunction): SetupStep[] => [
   },
 ];
 
+const getPortableSteps = (): SetupStep[] => [
+  { id: 'welcome', title: '欢迎', description: '开始使用 UClaw 便携版' },
+  { id: 'config', title: 'AI 配置', description: '配置 New API 接口' },
+  { id: 'complete', title: '完成', description: '一切就绪' },
+];
+
 // Default skills to auto-install (no additional API keys required)
 interface DefaultSkill {
   id: string;
@@ -80,7 +94,7 @@ const getDefaultSkills = (t: TFunction): DefaultSkill[] => [
   { id: 'terminal', name: t('defaultSkills.terminal.name'), description: t('defaultSkills.terminal.description') },
 ];
 
-import clawxIcon from '@/assets/logo.svg';
+import uclawIcon from '@/assets/logo.svg';
 
 // NOTE: Channel types moved to Settings > Channels page
 // NOTE: Skill bundles moved to Settings > Skills page - auto-install essential skills during setup
@@ -89,42 +103,48 @@ export function Setup() {
   const { t } = useTranslation(['setup', 'channels']);
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<number>(STEP.WELCOME);
+  const [isPortable, setIsPortable] = useState<boolean | null>(null);
 
   // Setup state
-  // Installation state for the Installing step
   const [installedSkills, setInstalledSkills] = useState<string[]>([]);
-  // Runtime check status
   const [runtimeChecksPassed, setRuntimeChecksPassed] = useState(false);
-
-  const steps = getSteps(t);
-  const safeStepIndex = Number.isInteger(currentStep)
-    ? Math.min(Math.max(currentStep, STEP.WELCOME), steps.length - 1)
-    : STEP.WELCOME;
-  const step = steps[safeStepIndex] ?? steps[STEP.WELCOME];
-  const isFirstStep = safeStepIndex === STEP.WELCOME;
-  const isLastStep = safeStepIndex === steps.length - 1;
+  // Portable config step: tracks whether user has saved a provider
+  const [portableConfigSaved, setPortableConfigSaved] = useState(false);
 
   const markSetupComplete = useSettingsStore((state) => state.markSetupComplete);
 
-  // Derive canProceed based on current step - computed directly to avoid useEffect
+  useEffect(() => {
+    invokeIpc<boolean>('app:isPortable').then(setIsPortable).catch(() => setIsPortable(false));
+  }, []);
+
+  const steps = isPortable ? getPortableSteps() : getSteps(t);
+  const safeStepIndex = Number.isInteger(currentStep)
+    ? Math.min(Math.max(currentStep, 0), steps.length - 1)
+    : 0;
+  const step = steps[safeStepIndex] ?? steps[0];
+  const isFirstStep = safeStepIndex === 0;
+  const isLastStep = safeStepIndex === steps.length - 1;
+
   const canProceed = useMemo(() => {
-    switch (safeStepIndex) {
-      case STEP.WELCOME:
-        return true;
-      case STEP.RUNTIME:
-        return runtimeChecksPassed;
-      case STEP.INSTALLING:
-        return false; // Cannot manually proceed, auto-proceeds when done
-      case STEP.COMPLETE:
-        return true;
-      default:
-        return true;
+    if (isPortable) {
+      switch (safeStepIndex) {
+        case PORTABLE_STEP.WELCOME: return true;
+        case PORTABLE_STEP.CONFIG: return portableConfigSaved;
+        case PORTABLE_STEP.COMPLETE: return true;
+        default: return true;
+      }
     }
-  }, [safeStepIndex, runtimeChecksPassed]);
+    switch (safeStepIndex) {
+      case STEP.WELCOME: return true;
+      case STEP.RUNTIME: return runtimeChecksPassed;
+      case STEP.INSTALLING: return false;
+      case STEP.COMPLETE: return true;
+      default: return true;
+    }
+  }, [isPortable, safeStepIndex, runtimeChecksPassed, portableConfigSaved]);
 
   const handleNext = async () => {
     if (isLastStep) {
-      // Complete setup
       markSetupComplete();
       toast.success(t('complete.title'));
       navigate('/');
@@ -142,15 +162,24 @@ export function Setup() {
     navigate('/');
   };
 
-  // Auto-proceed when installation is complete
   const handleInstallationComplete = useCallback((skills: string[]) => {
     setInstalledSkills(skills);
-    // Auto-proceed to next step after a short delay
-    setTimeout(() => {
-      setCurrentStep((i) => i + 1);
-    }, 1000);
+    setTimeout(() => { setCurrentStep((i) => i + 1); }, 1000);
   }, []);
 
+  // Show nothing until we know if portable (avoids flash)
+  if (isPortable === null) {
+    return (
+      <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+        <TitleBar />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
+  const isInstallingStep = !isPortable && safeStepIndex === STEP.INSTALLING;
 
   return (
     <div data-testid="setup-page" className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
@@ -200,30 +229,36 @@ export function Setup() {
             className="mx-auto max-w-2xl p-8"
           >
             <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold mb-2">{t(`steps.${step.id}.title`)}</h1>
-              <p className="text-slate-400">{t(`steps.${step.id}.description`)}</p>
+              <h1 className="text-3xl font-bold mb-2">{step.title}</h1>
+              <p className="text-slate-400">{step.description}</p>
             </div>
 
             {/* Step-specific content */}
             <div className="rounded-xl bg-card text-card-foreground border shadow-sm p-8 mb-8">
-              {safeStepIndex === STEP.WELCOME && <WelcomeContent />}
-              {safeStepIndex === STEP.RUNTIME && <RuntimeContent onStatusChange={setRuntimeChecksPassed} />}
-              {safeStepIndex === STEP.INSTALLING && (
+              {safeStepIndex === 0 && <WelcomeContent />}
+              {isPortable && safeStepIndex === PORTABLE_STEP.CONFIG && (
+                <PortableConfigContent onSaved={() => setPortableConfigSaved(true)} />
+              )}
+              {isPortable && safeStepIndex === PORTABLE_STEP.COMPLETE && (
+                <CompleteContent installedSkills={[]} />
+              )}
+              {!isPortable && safeStepIndex === STEP.RUNTIME && (
+                <RuntimeContent onStatusChange={setRuntimeChecksPassed} />
+              )}
+              {!isPortable && safeStepIndex === STEP.INSTALLING && (
                 <InstallingContent
                   skills={getDefaultSkills(t)}
                   onComplete={handleInstallationComplete}
                   onSkip={() => setCurrentStep((i) => i + 1)}
                 />
               )}
-              {safeStepIndex === STEP.COMPLETE && (
-                <CompleteContent
-                  installedSkills={installedSkills}
-                />
+              {!isPortable && safeStepIndex === STEP.COMPLETE && (
+                <CompleteContent installedSkills={installedSkills} />
               )}
             </div>
 
             {/* Navigation - hidden during installation step */}
-            {safeStepIndex !== STEP.INSTALLING && (
+            {!isInstallingStep && (
               <div className="flex justify-between">
                 <div>
                   {!isFirstStep && (
@@ -234,8 +269,13 @@ export function Setup() {
                   )}
                 </div>
                 <div className="flex gap-2">
-                  {!isLastStep && safeStepIndex !== STEP.RUNTIME && (
+                  {!isLastStep && !isPortable && safeStepIndex !== STEP.RUNTIME && (
                     <Button data-testid="setup-skip-button" variant="ghost" onClick={handleSkip}>
+                      {t('nav.skipSetup')}
+                    </Button>
+                  )}
+                  {isPortable && !isLastStep && (
+                    <Button variant="ghost" onClick={handleSkip}>
                       {t('nav.skipSetup')}
                     </Button>
                   )}
@@ -268,7 +308,7 @@ function WelcomeContent() {
   return (
     <div data-testid="setup-welcome-step" className="text-center space-y-4">
       <div className="mb-4 flex justify-center">
-        <img src={clawxIcon} alt="ClawX" className="h-16 w-16" />
+        <img src={uclawIcon} alt="UClaw" className="h-16 w-16" />
       </div>
       <h2 className="text-xl font-semibold">{t('welcome.title')}</h2>
       <p className="text-muted-foreground">
@@ -635,6 +675,141 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
           </pre>
         </div>
       )}
+    </div>
+  );
+}
+
+// ==================== Portable Config Step ====================
+
+interface PortableConfigContentProps {
+  onSaved: () => void;
+}
+
+function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
+  const DEFAULT_BASE_URL = 'https://chatbot.cn.unreachablecity.club/v1';
+  const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
+  const [apiKey, setApiKey] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState('deepseek-chat');
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleFetchModels = async () => {
+    const key = apiKey.trim();
+    if (!key) { setFetchError('请先输入 API Key'); return; }
+    setFetchingModels(true); setFetchError(null);
+    try {
+      const url = (baseUrl.trim() || DEFAULT_BASE_URL).replace(/\/$/, '');
+      const res = await fetch(`${url}/models`, { headers: { Authorization: `Bearer ${key}` } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json() as { data?: { id: string }[] };
+      const ids = (json.data ?? []).map((m) => m.id).filter(Boolean);
+      if (ids.length === 0) throw new Error('未返回任何模型');
+      setFetchedModels(ids);
+      if (!ids.includes(selectedModel)) setSelectedModel(ids[0]);
+    } catch (e) { setFetchError(String(e)); }
+    finally { setFetchingModels(false); }
+  };
+
+  const handleSave = async () => {
+    const key = apiKey.trim();
+    if (!key) { setSaveError('请输入 API Key'); return; }
+    setSaving(true); setSaveError(null);
+    try {
+      const resolvedBase = (baseUrl.trim() || DEFAULT_BASE_URL).replace(/\/$/, '');
+      const account = {
+        vendorId: 'new-api',
+        label: 'New API',
+        authMode: 'api_key',
+        baseUrl: resolvedBase,
+        modelId: selectedModel,
+      };
+      const data = await hostApiFetch<{ success: boolean; account?: { id: string }; error?: string }>(
+        '/api/provider-accounts',
+        { method: 'POST', body: JSON.stringify({ account, apiKey: key }) },
+      );
+      if (!data.success) throw new Error(data.error ?? '保存失败');
+      if (data.account?.id) {
+        await hostApiFetch('/api/provider-accounts/default', {
+          method: 'PUT',
+          body: JSON.stringify({ accountId: data.account.id }),
+        });
+      }
+      onSaved();
+      toast.success('AI 提供商已配置');
+    } catch (e) { setSaveError(String(e)); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="space-y-5">
+      <p className="text-sm text-muted-foreground">
+        配置 New API 接口地址和 API Key，UClaw 将使用此账号进行 AI 对话。
+      </p>
+
+      <div className="space-y-1.5">
+        <Label className="text-sm font-medium">接口地址 (Base URL)</Label>
+        <Input
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder={DEFAULT_BASE_URL}
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-medium">API Key</Label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={fetchingModels || !apiKey.trim()}
+            onClick={handleFetchModels}
+            className="h-7 px-2 text-[12px] text-blue-500 hover:text-blue-600 font-medium"
+          >
+            {fetchingModels ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+            获取模型列表
+          </Button>
+        </div>
+        <Input
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder="sk-..."
+        />
+        {fetchError && <p className="text-xs text-red-500">{fetchError}</p>}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-sm font-medium">默认模型</Label>
+        {fetchedModels.length > 0 ? (
+          <div className="relative">
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm appearance-none cursor-pointer pr-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {fetchedModels.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <ChevronRight className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 h-4 w-4 text-muted-foreground" />
+          </div>
+        ) : (
+          <Input value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} placeholder="deepseek-chat" />
+        )}
+      </div>
+
+      {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+
+      <Button
+        onClick={handleSave}
+        disabled={saving || !apiKey.trim()}
+        className="w-full bg-[#0a84ff] hover:bg-[#007aff] text-white font-medium"
+      >
+        {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+        保存配置
+      </Button>
     </div>
   );
 }

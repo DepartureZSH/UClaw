@@ -38,7 +38,7 @@ test.describe('Channels account ID validation', () => {
   test('rejects non-canonical custom account ID before save', async ({ electronApp, page }) => {
     await electronApp.evaluate(({ ipcMain }, responses) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).__clawxE2eChannelConfigSaveCount = 0;
+      (globalThis as any).__uclawE2eChannelConfigSaveCount = 0;
       ipcMain.removeHandler('hostapi:fetch');
       ipcMain.handle('hostapi:fetch', async (_event, request: { path?: string; method?: string }) => {
         const method = request?.method ?? 'GET';
@@ -55,7 +55,7 @@ test.describe('Channels account ID validation', () => {
         }
         if (path === '/api/channels/config' && method === 'POST') {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (globalThis as any).__clawxE2eChannelConfigSaveCount += 1;
+          (globalThis as any).__uclawE2eChannelConfigSaveCount += 1;
           return { ok: true, data: { status: 200, ok: true, json: responses.channelConfig } };
         }
         if (path.startsWith('/api/channels/config/') && method === 'GET') {
@@ -86,7 +86,7 @@ test.describe('Channels account ID validation', () => {
 
     const saveCalls = await electronApp.evaluate(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const count = Number((globalThis as any).__clawxE2eChannelConfigSaveCount || 0);
+      const count = Number((globalThis as any).__uclawE2eChannelConfigSaveCount || 0);
       return { count };
     });
     expect(saveCalls.count).toBe(0);

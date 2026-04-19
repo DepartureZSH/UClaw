@@ -4,7 +4,8 @@
  */
 import { app, BrowserWindow, nativeImage, session, shell } from 'electron';
 import type { Server } from 'node:http';
-import { join } from 'path';
+import { dirname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { GatewayManager } from '../gateway/manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { createTray } from './tray';
@@ -20,7 +21,7 @@ import { extensionRegistry } from '../extensions/registry';
 import { loadExtensionsFromManifest } from '../extensions/loader';
 import { registerAllBuiltinExtensions } from '../extensions/builtin';
 import { loadExternalMainExtensions } from '../extensions/_ext-bridge.generated';
-import { ensureClawXContext, repairClawXOnlyBootstrapFiles } from '../utils/openclaw-workspace';
+import { ensureUClawContext, repairUClawOnlyBootstrapFiles } from '../utils/openclaw-workspace';
 import { autoInstallCliIfNeeded, generateCompletionCache, installCompletionToProfile } from '../utils/openclaw-cli';
 import { isQuitting, setQuitting } from './app-state';
 import { applyProxySettings } from './proxy';
@@ -48,12 +49,47 @@ import { browserOAuthManager } from '../utils/browser-oauth';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
 import { syncAllProviderAuthToRuntime } from '../services/providers/provider-runtime-sync';
 
-const WINDOWS_APP_USER_MODEL_ID = 'app.clawx.desktop';
-const isE2EMode = process.env.CLAWX_E2E === '1';
-const requestedUserDataDir = process.env.CLAWX_USER_DATA_DIR?.trim();
+const WINDOWS_APP_USER_MODEL_ID = 'app.uclaw.desktop';
+const isE2EMode = process.env.UCLAW_E2E === '1';
+const requestedUserDataDir = process.env.UCLAW_USER_DATA_DIR?.trim();
 
 if (isE2EMode && requestedUserDataDir) {
   app.setPath('userData', requestedUserDataDir);
+}
+
+// Portable USB mode: detect a 'data/' folder at or above the executable directory.
+// Walks up to 4 parent levels so that multi-platform USB layouts work:
+//   windows/UClaw.exe          → ../data/ (1 level up)
+//   linux/uclaw                → ../data/ (1 level up)
+//   macos/UClaw.app/.../UClaw  → ../../../../data/ (4 levels up through .app bundle)
+//   UClaw.exe (flat layout)    → ./data/ (0 levels up)
+// Must run before requestSingleInstanceLock() — the lock file lives in userData.
+function detectPortableDataDir(): string | null {
+  if (isE2EMode) return null;
+  try {
+    let dir = dirname(app.getPath('exe'));
+    for (let i = 0; i <= 4; i++) {
+      const candidate = join(dir, 'data');
+      if (existsSync(candidate)) return candidate;
+      const parent = dirname(dir);
+      if (parent === dir) break; // filesystem root
+      dir = parent;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+if (!isE2EMode) {
+  const portableRoot = detectPortableDataDir();
+  if (portableRoot) {
+    const uclawDir = join(portableRoot, 'uclaw');
+    mkdirSync(uclawDir, { recursive: true });
+    app.setPath('userData', uclawDir);
+    // Signal paths.ts and store.ts that portable mode is active.
+    process.env.UCLAW_PORTABLE_ROOT = portableRoot;
+  }
 }
 
 // Disable GPU hardware acceleration globally for maximum stability across
@@ -73,11 +109,11 @@ if (isE2EMode && requestedUserDataDir) {
 app.disableHardwareAcceleration();
 
 // On Linux, set CHROME_DESKTOP so Chromium can find the correct .desktop file.
-// On Wayland this maps the running window to clawx.desktop (→ icon + app grouping);
+// On Wayland this maps the running window to uclaw.desktop (→ icon + app grouping);
 // on X11 it supplements the StartupWMClass matching.
 // Must be called before app.whenReady() / before any window is created.
 if (process.platform === 'linux') {
-  app.setDesktopName('clawx.desktop');
+  app.setDesktopName('uclaw.desktop');
 }
 
 // Prevent multiple instances of the app from running simultaneously.
@@ -87,7 +123,7 @@ if (process.platform === 'linux') {
 // The losing process must exit immediately so it never reaches Gateway startup.
 const gotElectronLock = isE2EMode ? true : app.requestSingleInstanceLock();
 if (!gotElectronLock) {
-  console.info('[ClawX] Another instance already holds the single-instance lock; exiting duplicate process');
+  console.info('[UClaw] Another instance already holds the single-instance lock; exiting duplicate process');
   app.exit(0);
 }
 let releaseProcessInstanceFileLock: () => void = () => {};
@@ -96,7 +132,7 @@ if (gotElectronLock && !isE2EMode) {
   try {
     const fileLock = acquireProcessInstanceFileLock({
       userDataDir: app.getPath('userData'),
-      lockName: 'clawx',
+      lockName: 'uclaw',
       force: true, // Electron lock already guarantees exclusivity; force-clean orphan/recycled-PID locks
     });
     gotFileLock = fileLock.acquired;
@@ -108,12 +144,12 @@ if (gotElectronLock && !isE2EMode) {
           ? 'unknown lock format/content'
           : 'unknown owner';
       console.info(
-        `[ClawX] Another instance already holds process lock (${fileLock.lockPath}, ${ownerDescriptor}); exiting duplicate process`,
+        `[UClaw] Another instance already holds process lock (${fileLock.lockPath}, ${ownerDescriptor}); exiting duplicate process`,
       );
       app.exit(0);
     }
   } catch (error) {
-    console.warn('[ClawX] Failed to acquire process instance file lock; continuing with Electron single-instance lock only', error);
+    console.warn('[UClaw] Failed to acquire process instance file lock; continuing with Electron single-instance lock only', error);
   }
 }
 const gotTheLock = gotElectronLock && gotFileLock;
@@ -161,7 +197,7 @@ function createWindow(): BrowserWindow {
   const isMac = process.platform === 'darwin';
   const isWindows = process.platform === 'win32';
   const useCustomTitleBar = isWindows;
-  const shouldSkipSetupForE2E = process.env.CLAWX_E2E_SKIP_SETUP === '1';
+  const shouldSkipSetupForE2E = process.env.UCLAW_E2E_SKIP_SETUP === '1';
 
   const win = new BrowserWindow({
     width: 1280,
@@ -204,7 +240,15 @@ function createWindow(): BrowserWindow {
     if (shouldSkipSetupForE2E) {
       rendererUrl.searchParams.set('e2eSkipSetup', '1');
     }
-    win.loadURL(rendererUrl.toString());
+    const devUrl = rendererUrl.toString();
+    win.loadURL(devUrl);
+    // Vite dev server may not be ready when Electron first opens the window.
+    // Retry on ERR_CONNECTION_REFUSED until the server is up.
+    win.webContents.on('did-fail-load', (_event, errorCode) => {
+      if (errorCode === -102 && !win.isDestroyed()) {
+        setTimeout(() => { if (!win.isDestroyed()) win.loadURL(devUrl); }, 1000);
+      }
+    });
     if (!isE2EMode) {
       win.webContents.openDevTools();
     }
@@ -281,7 +325,7 @@ function createMainWindow(): BrowserWindow {
 async function initialize(): Promise<void> {
   // Initialize logger first
   logger.init();
-  logger.info('=== ClawX Application Starting ===');
+  logger.info('=== UClaw Application Starting ===');
   logger.debug(
     `Runtime: platform=${process.platform}/${process.arch}, electron=${process.versions.electron}, node=${process.versions.node}, packaged=${app.isPackaged}, pid=${process.pid}, ppid=${process.ppid}`
   );
@@ -363,11 +407,11 @@ async function initialize(): Promise<void> {
   // Note: Auto-check for updates is driven by the renderer (update store init)
   // so it respects the user's "Auto-check for updates" setting.
 
-  // Repair any bootstrap files that only contain ClawX markers (no OpenClaw
-  // template content). This fixes a race condition where ensureClawXContext()
+  // Repair any bootstrap files that only contain UClaw markers (no OpenClaw
+  // template content). This fixes a race condition where ensureUClawContext()
   // previously created the file before the gateway could seed the full template.
   if (!isE2EMode) {
-    void repairClawXOnlyBootstrapFiles().catch((error) => {
+    void repairUClawOnlyBootstrapFiles().catch((error) => {
       logger.warn('Failed to repair bootstrap files:', error);
     });
   }
@@ -403,8 +447,8 @@ async function initialize(): Promise<void> {
   gatewayManager.on('status', (status: { state: string }) => {
     hostEventBus.emit('gateway:status', status);
     if (status.state === 'running' && !isE2EMode) {
-      void ensureClawXContext().catch((error) => {
-        logger.warn('Failed to re-merge ClawX context after gateway reconnect:', error);
+      void ensureUClawContext().catch((error) => {
+        logger.warn('Failed to re-merge UClaw context after gateway reconnect:', error);
       });
     }
   });
@@ -491,12 +535,12 @@ async function initialize(): Promise<void> {
     logger.info('Gateway auto-start disabled in settings');
   }
 
-  // Merge ClawX context snippets into the workspace bootstrap files.
+  // Merge UClaw context snippets into the workspace bootstrap files.
   // The gateway seeds workspace files asynchronously after its HTTP server
-  // is ready, so ensureClawXContext will retry until the target files appear.
+  // is ready, so ensureUClawContext will retry until the target files appear.
   if (!isE2EMode) {
-    void ensureClawXContext().catch((error) => {
-      logger.warn('Failed to merge ClawX context into workspace:', error);
+    void ensureUClawContext().catch((error) => {
+      logger.warn('Failed to merge UClaw context into workspace:', error);
     });
   }
 
@@ -547,7 +591,7 @@ if (gotTheLock) {
 
   // When a second instance is launched, focus the existing window instead.
   app.on('second-instance', () => {
-    logger.info('Second ClawX instance detected; redirecting to the existing window');
+    logger.info('Second UClaw instance detected; redirecting to the existing window');
 
     const focusRequest = requestSecondInstanceFocus(
       mainWindowFocusState,

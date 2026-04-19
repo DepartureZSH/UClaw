@@ -22,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import {
   useProviderStore,
   type ProviderAccount,
@@ -372,6 +371,9 @@ function ProviderCard({
   const [validating, setValidating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [arkMode, setArkMode] = useState<ArkMode>('apikey');
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelError, setFetchModelError] = useState<string | null>(null);
 
   const typeInfo = PROVIDER_TYPE_INFO.find((t) => t.id === account.vendorId);
   const providerDocsUrl = getProviderDocsUrl(typeInfo, i18n.language);
@@ -418,6 +420,22 @@ function ProviderCard({
         ? current.filter((id) => id !== providerId)
         : [...current, providerId]
     ));
+  };
+
+  const handleFetchModelsForEdit = async () => {
+    setFetchingModels(true);
+    setFetchModelError(null);
+    try {
+      const data = await hostApiFetch(`/api/provider-accounts/${encodeURIComponent(account.id)}/models`);
+      const ids: string[] = (data as { models: string[] }).models ?? [];
+      if (ids.length === 0) throw new Error('未返回任何模型');
+      setFetchedModels(ids);
+      if (!ids.includes(modelId)) setModelId(ids[0]);
+    } catch (e) {
+      setFetchModelError(String(e));
+    } finally {
+      setFetchingModels(false);
+    }
   };
 
   const handleSaveEdits = async () => {
@@ -638,13 +656,47 @@ function ProviderCard({
               )}
               {showModelIdField && (
                 <div className="space-y-1.5 pt-2">
-                  <Label className={currentLabelClasses}>{t('aiProviders.dialog.modelId')}</Label>
-                  <Input
-                    value={modelId}
-                    onChange={(e) => setModelId(e.target.value)}
-                    placeholder={typeInfo?.modelIdPlaceholder || 'provider/model-id'}
-                    className={currentInputClasses}
-                  />
+                  <div className="flex items-center justify-between">
+                    <Label className={currentLabelClasses}>{t('aiProviders.dialog.modelId')}</Label>
+                    {account.vendorId === 'new-api' && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={fetchingModels}
+                        onClick={handleFetchModelsForEdit}
+                        className="h-6 px-2 text-[11px] text-blue-500 hover:text-blue-600 font-medium"
+                      >
+                        {fetchingModels ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                        获取模型列表
+                      </Button>
+                    )}
+                  </div>
+                  {account.vendorId === 'new-api' && fetchedModels.length > 0 ? (
+                    <div className="relative">
+                      <select
+                        value={modelId}
+                        onChange={(e) => setModelId(e.target.value)}
+                        className={cn(currentInputClasses, 'w-full appearance-none cursor-pointer px-3 pr-9')}
+                      >
+                        {fetchedModels.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <Input
+                      value={modelId}
+                      onChange={(e) => setModelId(e.target.value)}
+                      placeholder={account.vendorId === 'new-api' ? '请先点击「获取模型列表」' : (typeInfo?.modelIdPlaceholder || 'provider/model-id')}
+                      disabled={account.vendorId === 'new-api'}
+                      className={currentInputClasses}
+                    />
+                  )}
+                  {account.vendorId === 'new-api' && fetchModelError && (
+                    <p className="text-[11px] text-red-500">{fetchModelError}</p>
+                  )}
                 </div>
               )}
               {account.vendorId === 'ark' && codePlanPreset && (
@@ -749,17 +801,52 @@ function ProviderCard({
               <div className="space-y-3 pt-2">
                 <div className="space-y-1.5">
                   <Label className={currentLabelClasses}>{t('aiProviders.dialog.fallbackModelIds')}</Label>
-                  <textarea
-                    value={fallbackModelsText}
-                    onChange={(e) => setFallbackModelsText(e.target.value)}
-                    placeholder={t('aiProviders.dialog.fallbackModelIdsPlaceholder')}
-                    className={isDefault
-                      ? "min-h-24 w-full rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-card px-3 py-2 text-[13px] font-mono outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 shadow-sm"
-                      : "min-h-24 w-full rounded-xl border border-black/10 dark:border-white/10 bg-[#eeece3] dark:bg-muted px-3 py-2 text-[13px] font-mono outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:border-blue-500 shadow-sm transition-all text-foreground placeholder:text-foreground/40"}
-                  />
-                  <p className="text-[12px] text-muted-foreground">
-                    {t('aiProviders.dialog.fallbackModelIdsHelp')}
-                  </p>
+                  {account.vendorId === 'new-api' && fetchedModels.length > 0 ? (() => {
+                    const checked = new Set(fallbackModelsText.split('\n').map((s) => s.trim()).filter(Boolean));
+                    const toggle = (id: string) => {
+                      const next = new Set(checked);
+                      next.has(id) ? next.delete(id) : next.add(id);
+                      setFallbackModelsText([...next].join('\n'));
+                    };
+                    return (
+                      <div className={cn("space-y-2 rounded-xl border border-black/10 dark:border-white/10 p-3 shadow-sm max-h-52 overflow-y-auto", isDefault ? "bg-white dark:bg-card" : "bg-[#eeece3] dark:bg-muted")}>
+                        {fetchedModels.map((m) => (
+                          <label key={m} className="flex items-center gap-3 text-[13px] cursor-pointer group/label">
+                            <input
+                              type="checkbox"
+                              checked={checked.has(m)}
+                              onChange={() => toggle(m)}
+                              className="rounded border-black/20 dark:border-white/20 text-blue-500 focus:ring-blue-500/50"
+                            />
+                            <span className="font-medium font-mono group-hover/label:text-blue-500 transition-colors">{m}</span>
+                          </label>
+                        ))}
+                      </div>
+                    );
+                  })() : (
+                    <>
+                      <textarea
+                        value={fallbackModelsText}
+                        onChange={(e) => setFallbackModelsText(e.target.value)}
+                        placeholder={account.vendorId === 'new-api' ? '请先点击「获取模型列表」' : t('aiProviders.dialog.fallbackModelIdsPlaceholder')}
+                        disabled={account.vendorId === 'new-api'}
+                        className={cn(
+                          "min-h-24 w-full rounded-xl border border-black/10 dark:border-white/10 px-3 py-2 text-[13px] font-mono outline-none shadow-sm",
+                          isDefault
+                            ? "bg-white dark:bg-card focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                            : "bg-[#eeece3] dark:bg-muted focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:border-blue-500 transition-all text-foreground placeholder:text-foreground/40",
+                          account.vendorId === 'new-api' && "opacity-50 cursor-not-allowed"
+                        )}
+                      />
+                      {account.vendorId === 'new-api' ? (
+                        <p className="text-[12px] text-muted-foreground">点击「获取模型列表」后可从列表中勾选</p>
+                      ) : (
+                        <p className="text-[12px] text-muted-foreground">
+                          {t('aiProviders.dialog.fallbackModelIdsHelp')}
+                        </p>
+                      )}
+                    </>
+                  )}
                 </div>
                 <div className="space-y-2 pt-1">
                   <Label className={currentLabelClasses}>{t('aiProviders.dialog.fallbackProviders')}</Label>
@@ -883,6 +970,36 @@ function ProviderCard({
               </p>
             </div>
           </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCancelEdit}
+              className="rounded-xl h-9 px-4 text-[13px] text-muted-foreground hover:text-foreground"
+            >
+              {t('common.cancel', '取消')}
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSaveEdits}
+              disabled={
+                validating || saving
+                || (
+                  !newKey.trim()
+                  && (baseUrl.trim() || undefined) === (account.baseUrl || undefined)
+                  && userAgent.trim() === getUserAgentHeader(account.headers).trim()
+                  && (modelId.trim() || undefined) === (account.model || undefined)
+                  && fallbackModelsEqual(normalizeFallbackModels(fallbackModelsText.split('\n')), account.fallbackModels)
+                  && fallbackProviderIdsEqual(fallbackProviderIds, account.fallbackAccountIds)
+                )
+                || Boolean(showModelIdField && !modelId.trim())
+              }
+              className="rounded-xl h-9 px-4 text-[13px] bg-[#0a84ff] hover:bg-[#007aff] text-white font-medium"
+            >
+              {validating || saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+              {t('common.save', '保存')}
+            </Button>
+          </div>
         </div>
       )}
     </div>
@@ -922,11 +1039,11 @@ function AddProviderDialog({
   devModeUnlocked,
 }: AddProviderDialogProps) {
   const { t, i18n } = useTranslation('settings');
-  const [selectedType, setSelectedType] = useState<ProviderType | null>(null);
-  const [name, setName] = useState('');
+  const [selectedType, setSelectedType] = useState<ProviderType | null>('new-api');
+  const [name, setName] = useState('New API');
   const [apiKey, setApiKey] = useState('');
-  const [baseUrl, setBaseUrl] = useState('');
-  const [modelId, setModelId] = useState('');
+  const [baseUrl, setBaseUrl] = useState('https://chatbot.cn.unreachablecity.club/v1');
+  const [modelId, setModelId] = useState('deepseek-chat');
   const [apiProtocol, setApiProtocol] = useState<ProviderAccount['apiProtocol']>('openai-completions');
   const [showAdvancedConfig, setShowAdvancedConfig] = useState(false);
   const [userAgent, setUserAgent] = useState('');
@@ -934,6 +1051,9 @@ function AddProviderDialog({
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelError, setFetchModelError] = useState<string | null>(null);
 
   // OAuth Flow State
   const [oauthFlowing, setOauthFlowing] = useState(false);
@@ -1135,6 +1255,31 @@ function AddProviderDialog({
     }
   };
 
+  const handleFetchModels = async () => {
+    const key = apiKey.trim();
+    if (!key) {
+      setFetchModelError('请先输入 API Key');
+      return;
+    }
+    setFetchingModels(true);
+    setFetchModelError(null);
+    try {
+      const res = await fetch('https://chatbot.cn.unreachablecity.club/v1/models', {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const ids: string[] = (json.data ?? []).map((m: { id: string }) => m.id).filter(Boolean);
+      if (ids.length === 0) throw new Error('未返回任何模型');
+      setFetchedModels(ids);
+      if (!ids.includes(modelId)) setModelId(ids[0]);
+    } catch (e) {
+      setFetchModelError(String(e));
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
   const availableTypes = PROVIDER_TYPE_INFO.filter((type) => {
     // Skip providers that are temporarily hidden from the UI.
     if (type.hidden) return false;
@@ -1273,20 +1418,22 @@ function AddProviderDialog({
                 </div>
                 <div>
                   <p className="font-semibold text-[15px]">{typeInfo?.id === 'custom' ? t('aiProviders.custom') : typeInfo?.name}</p>
-                  <button
-                  onClick={() => {
-                    setSelectedType(null);
-                    setValidationError(null);
-                    setBaseUrl('');
-                    setModelId('');
-                    setUserAgent('');
-                    setShowAdvancedConfig(false);
-                    setArkMode('apikey');
-                  }}
-                  className="text-[13px] text-blue-500 hover:text-blue-600 font-medium"
-                >
-                    {t('aiProviders.dialog.change')}
-                  </button>
+                  {availableTypes.length > 1 && (
+                    <button
+                    onClick={() => {
+                      setSelectedType(null);
+                      setValidationError(null);
+                      setBaseUrl('');
+                      setModelId('');
+                      setUserAgent('');
+                      setShowAdvancedConfig(false);
+                      setArkMode('apikey');
+                    }}
+                    className="text-[13px] text-blue-500 hover:text-blue-600 font-medium"
+                  >
+                      {t('aiProviders.dialog.change')}
+                    </button>
+                  )}
                   {effectiveDocsUrl && (
                     <>
                       <span className="mx-2 text-foreground/20">|</span>
@@ -1402,7 +1549,52 @@ function AddProviderDialog({
                   </div>
                 )}
 
-                {showModelIdField && (
+                {showModelIdField && selectedType === 'new-api' && (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="modelId" className={labelClasses}>{t('aiProviders.dialog.modelId')}</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={fetchingModels}
+                        onClick={handleFetchModels}
+                        className="h-7 px-2 text-[12px] text-blue-500 hover:text-blue-600 font-medium"
+                      >
+                        {fetchingModels ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                        获取模型列表
+                      </Button>
+                    </div>
+                    {fetchedModels.length > 0 ? (
+                      <div className="relative">
+                        <select
+                          id="modelId"
+                          value={modelId}
+                          onChange={(e) => { setModelId(e.target.value); setValidationError(null); }}
+                          className={cn(inputClasses, 'w-full appearance-none cursor-pointer pr-9')}
+                        >
+                          {fetchedModels.map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <Input
+                        data-testid="add-provider-model-id-input"
+                        id="modelId"
+                        placeholder="请先点击「获取模型列表」"
+                        value={modelId}
+                        disabled
+                        className={inputClasses}
+                      />
+                    )}
+                    {fetchModelError && (
+                      <p className="text-[12px] text-red-500">{fetchModelError}</p>
+                    )}
+                  </div>
+                )}
+                {showModelIdField && selectedType !== 'new-api' && (
                   <div className="space-y-2.5">
                     <Label htmlFor="modelId" className={labelClasses}>{t('aiProviders.dialog.modelId')}</Label>
                     <Input
@@ -1654,24 +1846,29 @@ function AddProviderDialog({
                 )}
               </div>
 
-              <Separator className="bg-black/10 dark:bg-white/10" />
-
-              <div className="flex justify-end gap-3">
-                <Button
-                  data-testid="add-provider-submit-button"
-                  onClick={handleAdd}
-                  className={cn("rounded-full px-8 h-[42px] text-[13px] font-semibold bg-[#0a84ff] hover:bg-[#007aff] text-white shadow-sm", useOAuthFlow && "hidden")}
-                  disabled={!selectedType || saving || (showModelIdField && modelId.trim().length === 0)}
-                >
-                  {saving ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : null}
-                  {t('aiProviders.dialog.add')}
-                </Button>
-              </div>
             </div>
           )}
         </CardContent>
+        {selectedType && (
+          <div className="px-6 pb-6 pt-4 shrink-0 border-t border-black/10 dark:border-white/10 flex justify-end gap-3">
+            <Button
+              variant="ghost"
+              onClick={onClose}
+              className="rounded-full px-6 h-[42px] text-[13px] font-semibold text-muted-foreground hover:text-foreground"
+            >
+              {t('common.cancel', '取消')}
+            </Button>
+            <Button
+              data-testid="add-provider-submit-button"
+              onClick={handleAdd}
+              className={cn("rounded-full px-8 h-[42px] text-[13px] font-semibold bg-[#0a84ff] hover:bg-[#007aff] text-white shadow-sm", useOAuthFlow && "hidden")}
+              disabled={!selectedType || saving || (showModelIdField && modelId.trim().length === 0)}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {t('aiProviders.dialog.add')}
+            </Button>
+          </div>
+        )}
       </Card>
     </div>
   );

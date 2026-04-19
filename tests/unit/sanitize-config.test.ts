@@ -298,7 +298,7 @@ async function sanitizeConfig(
 }
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), 'clawx-test-'));
+  tempDir = await mkdtemp(join(tmpdir(), 'uclaw-test-'));
   configPath = join(tempDir, 'openclaw.json');
 });
 

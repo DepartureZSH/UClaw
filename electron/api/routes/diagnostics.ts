@@ -72,7 +72,7 @@ export async function handleDiagnosticsRoutes(
         platform: process.platform,
         gateway,
         channels,
-        clawxLogTail: await logger.readLogFile(DEFAULT_TAIL_LINES),
+        uclawLogTail: await logger.readLogFile(DEFAULT_TAIL_LINES),
         gatewayLogTail: await readTail(join(openClawDir, 'logs', 'gateway.log')),
         gatewayErrLogTail: await readTail(join(openClawDir, 'logs', 'gateway.err.log')),
       });

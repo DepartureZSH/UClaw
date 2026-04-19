@@ -174,31 +174,32 @@ export class AppUpdater extends EventEmitter {
    * final status so the UI never gets stuck in 'checking'.
    */
   async checkForUpdates(): Promise<UpdateInfo | null> {
-    try {
-      const result = await autoUpdater.checkForUpdates();
+    return null;
+    // try {
+    //   const result = await autoUpdater.checkForUpdates();
 
-      // In dev mode (app not packaged), autoUpdater silently returns null
-      // without emitting ANY events (not even checking-for-update).
-      // Detect this and force an error so the UI never stays silent.
-      if (result == null) {
-        this.updateStatus({
-          status: 'error',
-          error: 'Update check skipped (dev mode – app is not packaged)',
-        });
-        return null;
-      }
+    //   // In dev mode (app not packaged), autoUpdater silently returns null
+    //   // without emitting ANY events (not even checking-for-update).
+    //   // Detect this and force an error so the UI never stays silent.
+    //   if (result == null) {
+    //     this.updateStatus({
+    //       status: 'error',
+    //       error: 'Update check skipped (dev mode – app is not packaged)',
+    //     });
+    //     return null;
+    //   }
 
-      // Safety net: if events somehow didn't fire, force a final state.
-      if (this.status.status === 'checking' || this.status.status === 'idle') {
-        this.updateStatus({ status: 'not-available' });
-      }
+    //   // Safety net: if events somehow didn't fire, force a final state.
+    //   if (this.status.status === 'checking' || this.status.status === 'idle') {
+    //     this.updateStatus({ status: 'not-available' });
+    //   }
 
-      return result.updateInfo || null;
-    } catch (error) {
-      logger.error('[Updater] Check for updates failed:', error);
-      this.updateStatus({ status: 'error', error: (error as Error).message || String(error) });
-      throw error;
-    }
+    //   return result.updateInfo || null;
+    // } catch (error) {
+    //   logger.error('[Updater] Check for updates failed:', error);
+    //   this.updateStatus({ status: 'error', error: (error as Error).message || String(error) });
+    //   throw error;
+    // }
   }
 
   /**

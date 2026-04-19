@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import {
   type ProviderConfig,
+  getApiKey,
 } from '../../utils/secure-storage';
 import {
   getProviderConfig,
@@ -22,6 +23,7 @@ import { getProviderService } from '../../services/providers/provider-service';
 import { providerAccountToConfig } from '../../services/providers/provider-store';
 import type { ProviderAccount } from '../../shared/providers/types';
 import { logger } from '../../utils/logger';
+import { proxyAwareFetch } from '../../utils/proxy-fetch';
 
 const legacyProviderRoutesWarned = new Set<string>();
 
@@ -88,6 +90,37 @@ export async function handleProviderRoutes(
       await providerService.setDefaultAccount(body.accountId);
       await syncDefaultProviderToRuntime(body.accountId, ctx.gatewayManager);
       sendJson(res, 200, { success: true });
+    } catch (error) {
+      sendJson(res, 500, { success: false, error: String(error) });
+    }
+    return true;
+  }
+
+  if (url.pathname.startsWith('/api/provider-accounts/') && url.pathname.endsWith('/models') && req.method === 'GET') {
+    const inner = decodeURIComponent(url.pathname.slice('/api/provider-accounts/'.length, -'/models'.length));
+    const accountId = inner.replace(/\/$/, '');
+    try {
+      const account = await providerService.getAccount(accountId);
+      if (!account) {
+        sendJson(res, 404, { success: false, error: 'Account not found' });
+        return true;
+      }
+      const apiKey = await getApiKey(accountId);
+      if (!apiKey) {
+        sendJson(res, 400, { success: false, error: 'No API key stored for this account' });
+        return true;
+      }
+      const baseUrl = (account.baseUrl || 'https://chatbot.cn.unreachablecity.club/v1').replace(/\/$/, '');
+      const modelsRes = await proxyAwareFetch(`${baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!modelsRes.ok) {
+        sendJson(res, 502, { success: false, error: `Upstream HTTP ${modelsRes.status}` });
+        return true;
+      }
+      const json = await modelsRes.json() as { data?: { id: string }[] };
+      const models = (json.data ?? []).map((m) => m.id).filter(Boolean);
+      sendJson(res, 200, { success: true, models });
     } catch (error) {
       sendJson(res, 500, { success: false, error: String(error) });
     }
