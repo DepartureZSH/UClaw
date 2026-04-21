@@ -40,8 +40,9 @@ interface SetupStep {
 const STEP = {
   WELCOME: 0,
   RUNTIME: 1,
-  INSTALLING: 2,
-  COMPLETE: 3,
+  AI_CONFIG: 2,
+  INSTALLING: 3,
+  COMPLETE: 4,
 } as const;
 
 const PORTABLE_STEP = {
@@ -60,6 +61,11 @@ const getSteps = (t: TFunction): SetupStep[] => [
     id: 'runtime',
     title: t('steps.runtime.title'),
     description: t('steps.runtime.description'),
+  },
+  {
+    id: 'ai-config',
+    title: 'AI 配置',
+    description: '配置 New API 接口和模型',
   },
   {
     id: 'installing',
@@ -108,8 +114,8 @@ export function Setup() {
   // Setup state
   const [installedSkills, setInstalledSkills] = useState<string[]>([]);
   const [runtimeChecksPassed, setRuntimeChecksPassed] = useState(false);
-  // Portable config step: tracks whether user has saved a provider
-  const [portableConfigSaved, setPortableConfigSaved] = useState(false);
+  // AI config step: tracks whether user has saved a provider (portable or standard)
+  const [aiConfigSaved, setAiConfigSaved] = useState(false);
 
   const markSetupComplete = useSettingsStore((state) => state.markSetupComplete);
 
@@ -129,7 +135,7 @@ export function Setup() {
     if (isPortable) {
       switch (safeStepIndex) {
         case PORTABLE_STEP.WELCOME: return true;
-        case PORTABLE_STEP.CONFIG: return portableConfigSaved;
+        case PORTABLE_STEP.CONFIG: return aiConfigSaved;
         case PORTABLE_STEP.COMPLETE: return true;
         default: return true;
       }
@@ -137,11 +143,12 @@ export function Setup() {
     switch (safeStepIndex) {
       case STEP.WELCOME: return true;
       case STEP.RUNTIME: return runtimeChecksPassed;
+      case STEP.AI_CONFIG: return true; // skippable in standard mode
       case STEP.INSTALLING: return false;
       case STEP.COMPLETE: return true;
       default: return true;
     }
-  }, [isPortable, safeStepIndex, runtimeChecksPassed, portableConfigSaved]);
+  }, [isPortable, safeStepIndex, runtimeChecksPassed, aiConfigSaved]);
 
   const handleNext = async () => {
     if (isLastStep) {
@@ -237,13 +244,16 @@ export function Setup() {
             <div className="rounded-xl bg-card text-card-foreground border shadow-sm p-8 mb-8">
               {safeStepIndex === 0 && <WelcomeContent />}
               {isPortable && safeStepIndex === PORTABLE_STEP.CONFIG && (
-                <PortableConfigContent onSaved={() => setPortableConfigSaved(true)} />
+                <PortableConfigContent onSaved={() => setAiConfigSaved(true)} />
               )}
               {isPortable && safeStepIndex === PORTABLE_STEP.COMPLETE && (
                 <CompleteContent installedSkills={[]} />
               )}
               {!isPortable && safeStepIndex === STEP.RUNTIME && (
                 <RuntimeContent onStatusChange={setRuntimeChecksPassed} />
+              )}
+              {!isPortable && safeStepIndex === STEP.AI_CONFIG && (
+                <PortableConfigContent onSaved={() => setAiConfigSaved(true)} />
               )}
               {!isPortable && safeStepIndex === STEP.INSTALLING && (
                 <InstallingContent
@@ -269,9 +279,15 @@ export function Setup() {
                   )}
                 </div>
                 <div className="flex gap-2">
-                  {!isLastStep && !isPortable && safeStepIndex !== STEP.RUNTIME && (
+                  {!isLastStep && !isPortable && safeStepIndex !== STEP.RUNTIME && safeStepIndex !== STEP.AI_CONFIG && (
                     <Button data-testid="setup-skip-button" variant="ghost" onClick={handleSkip}>
                       {t('nav.skipSetup')}
+                    </Button>
+                  )}
+                  {/* AI config step in standard mode: allow skipping (unlike portable mode) */}
+                  {!isPortable && safeStepIndex === STEP.AI_CONFIG && !aiConfigSaved && (
+                    <Button variant="ghost" onClick={() => setCurrentStep((i) => i + 1)}>
+                      跳过
                     </Button>
                   )}
                   {isPortable && !isLastStep && (
@@ -699,14 +715,14 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
   const handleFetchModels = async () => {
     const key = apiKey.trim();
     if (!key) { setFetchError('请先输入 API Key'); return; }
-    setFetchingModels(true); setFetchError(null);
+    setFetchingModels(true); setFetchError(null); setFetchedModels([]);
     try {
       const url = (baseUrl.trim() || DEFAULT_BASE_URL).replace(/\/$/, '');
       const res = await fetch(`${url}/models`, { headers: { Authorization: `Bearer ${key}` } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status} — 请检查接口地址和 API Key`);
       const json = await res.json() as { data?: { id: string }[] };
       const ids = (json.data ?? []).map((m) => m.id).filter(Boolean);
-      if (ids.length === 0) throw new Error('未返回任何模型');
+      if (ids.length === 0) throw new Error('未返回任何模型，请确认接口地址正确');
       setFetchedModels(ids);
       if (!ids.includes(selectedModel)) setSelectedModel(ids[0]);
     } catch (e) { setFetchError(String(e)); }
@@ -716,6 +732,7 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
   const handleSave = async () => {
     const key = apiKey.trim();
     if (!key) { setSaveError('请输入 API Key'); return; }
+    if (fetchedModels.length === 0) { setSaveError('请先点击「获取模型列表」验证接口'); return; }
     setSaving(true); setSaveError(null);
     try {
       const resolvedBase = (baseUrl.trim() || DEFAULT_BASE_URL).replace(/\/$/, '');
@@ -724,7 +741,7 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
         label: 'New API',
         authMode: 'api_key',
         baseUrl: resolvedBase,
-        modelId: selectedModel,
+        model: selectedModel,
       };
       const data = await hostApiFetch<{ success: boolean; account?: { id: string }; error?: string }>(
         '/api/provider-accounts',
@@ -737,6 +754,8 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
           body: JSON.stringify({ accountId: data.account.id }),
         });
       }
+      // Write initial plugin config (moonshot web search + browser) to openclaw.json
+      await invokeIpc('openclaw:applyInitialConfig', key, resolvedBase);
       onSaved();
       toast.success('AI 提供商已配置');
     } catch (e) { setSaveError(String(e)); }
@@ -796,7 +815,7 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
             <ChevronRight className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 h-4 w-4 text-muted-foreground" />
           </div>
         ) : (
-          <Input value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} placeholder="deepseek-chat" />
+          <p className="text-xs text-muted-foreground py-2">请先填写 API Key 并点击「获取模型列表」</p>
         )}
       </div>
 
@@ -804,7 +823,7 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
 
       <Button
         onClick={handleSave}
-        disabled={saving || !apiKey.trim()}
+        disabled={saving || !apiKey.trim() || fetchedModels.length === 0}
         className="w-full bg-[#0a84ff] hover:bg-[#007aff] text-white font-medium"
       >
         {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}

@@ -54,7 +54,7 @@ export function expandPath(path: string): string {
  */
 export function getOpenClawConfigDir(): string {
   const portableRoot = process.env.UCLAW_PORTABLE_ROOT;
-  if (portableRoot) return join(portableRoot, 'openclaw');
+  if (portableRoot) return join(portableRoot, '.openclaw');
   return join(homedir(), '.openclaw');
 }
 

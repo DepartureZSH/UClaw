@@ -9,13 +9,14 @@ import { readFile, writeFile, access, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { constants } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
-import { getOpenClawDir, getResourcesDir } from './paths';
+import { getOpenClawDir, getResourcesDir, getOpenClawConfigDir, getOpenClawSkillsDir } from './paths';
 import { logger } from './logger';
 import { cpAsyncSafe } from './plugin-install';
 import { withConfigLock } from './config-mutex';
 
-const OPENCLAW_CONFIG_PATH = join(homedir(), '.openclaw', 'openclaw.json');
+function getOpenClawConfigPath() {
+  return join(getOpenClawConfigDir(), 'openclaw.json');
+}
 
 interface SkillEntry {
     enabled?: boolean;
@@ -28,6 +29,11 @@ interface OpenClawConfig {
         entries?: Record<string, SkillEntry>;
         [key: string]: unknown;
     };
+    plugins?: {
+        entries?: Record<string, unknown>;
+        [key: string]: unknown;
+    };
+    tools?: Record<string, unknown>;
     [key: string]: unknown;
 }
 
@@ -65,11 +71,11 @@ async function fileExists(p: string): Promise<boolean> {
  * Read the current OpenClaw config
  */
 async function readConfig(): Promise<OpenClawConfig> {
-    if (!(await fileExists(OPENCLAW_CONFIG_PATH))) {
+    if (!(await fileExists(getOpenClawConfigPath()))) {
         return {};
     }
     try {
-        const raw = await readFile(OPENCLAW_CONFIG_PATH, 'utf-8');
+        const raw = await readFile(getOpenClawConfigPath(), 'utf-8');
         return JSON.parse(raw);
     } catch (err) {
         console.error('Failed to read openclaw config:', err);
@@ -82,7 +88,7 @@ async function readConfig(): Promise<OpenClawConfig> {
  */
 async function writeConfig(config: OpenClawConfig): Promise<void> {
     const json = JSON.stringify(config, null, 2);
-    await writeFile(OPENCLAW_CONFIG_PATH, json, 'utf-8');
+    await writeFile(getOpenClawConfigPath(), json, 'utf-8');
 }
 
 async function setSkillsEnabled(skillKeys: string[], enabled: boolean): Promise<void> {
@@ -201,7 +207,7 @@ const BUILTIN_SKILLS = [] as const;
  * block the normal startup flow.
  */
 export async function ensureBuiltinSkillsInstalled(): Promise<void> {
-    const skillsRoot = join(homedir(), '.openclaw', 'skills');
+    const skillsRoot = getOpenClawSkillsDir();
 
     for (const { slug, sourceExtension } of BUILTIN_SKILLS) {
         const targetDir = join(skillsRoot, slug);
@@ -329,7 +335,7 @@ export async function ensurePreinstalledSkillsInstalled(): Promise<void> {
     }
     const lockVersions = await readPreinstalledLockVersions(sourceRoot);
 
-    const targetRoot = join(homedir(), '.openclaw', 'skills');
+    const targetRoot = getOpenClawSkillsDir();
     await mkdir(targetRoot, { recursive: true });
     const toEnable: string[] = [];
 
@@ -387,4 +393,49 @@ export async function ensurePreinstalledSkillsInstalled(): Promise<void> {
             logger.warn('Failed to auto-enable preinstalled skills:', error);
         }
     }
+}
+
+/**
+ * Write initial plugin config to openclaw.json after first-time AI provider setup.
+ * Enables the moonshot web search plugin (reusing the provider's apiKey/baseUrl)
+ * and the browser plugin, and sets the tool profile to full.
+ */
+export async function applyInitialPluginConfig(apiKey: string, baseUrl: string): Promise<void> {
+    return withConfigLock(async () => {
+        const config = await readConfig();
+
+        config.plugins = {
+            ...(config.plugins || {}),
+            entries: {
+                ...((config.plugins?.entries) || {}),
+                moonshot: {
+                    config: {
+                        webSearch: {
+                            apiKey,
+                            baseUrl,
+                            model: 'kimi-k2.5',
+                        },
+                    },
+                    enabled: true,
+                },
+                browser: {
+                    enabled: true,
+                },
+            },
+        };
+
+        config.tools = {
+            ...(config.tools || {}),
+            web: {
+                search: {
+                    enabled: true,
+                    provider: 'kimi',
+                },
+            },
+            profile: 'full',
+        };
+
+        await writeConfig(config);
+        logger.info('Applied initial plugin config to openclaw.json');
+    });
 }

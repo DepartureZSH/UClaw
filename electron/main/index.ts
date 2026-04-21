@@ -67,6 +67,12 @@ if (isE2EMode && requestedUserDataDir) {
 function detectPortableDataDir(): string | null {
   if (isE2EMode) return null;
   try {
+    // In dev mode app.getAppPath() is the project root — check it first so a
+    // local data/ folder is found without relying on the exe path heuristic.
+    const appPathCandidate = join(app.getAppPath(), 'data');
+    if (existsSync(appPathCandidate)) return appPathCandidate;
+
+    // In packaged mode walk up from the executable (covers all USB layouts).
     let dir = dirname(app.getPath('exe'));
     for (let i = 0; i <= 4; i++) {
       const candidate = join(dir, 'data');
@@ -82,7 +88,11 @@ function detectPortableDataDir(): string | null {
 }
 
 if (!isE2EMode) {
-  const portableRoot = detectPortableDataDir();
+  // Allow dev-mode override: if UCLAW_PORTABLE_ROOT is already set in the
+  // environment (e.g. via PowerShell before `pnpm dev`), use it directly
+  // without relying on the exe-relative data/ directory walk.
+  const envPortableRoot = process.env.UCLAW_PORTABLE_ROOT?.trim() || null;
+  const portableRoot = envPortableRoot ?? detectPortableDataDir();
   if (portableRoot) {
     const uclawDir = join(portableRoot, 'uclaw');
     mkdirSync(uclawDir, { recursive: true });

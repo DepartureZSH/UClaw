@@ -1091,23 +1091,16 @@ export function Settings() {
                 <Button
                   variant="link"
                   className="h-auto p-0 text-[14px] text-blue-500 hover:text-blue-600 font-medium"
-                  onClick={() => window.electron.openExternal('https://claw-x.com')}
+                  onClick={() => window.electron.openExternal('https://chatbot.cn.unreachablecity.club/')}
                 >
                   {t('about.docs')}
                 </Button>
                 <Button
                   variant="link"
                   className="h-auto p-0 text-[14px] text-blue-500 hover:text-blue-600 font-medium"
-                  onClick={() => window.electron.openExternal('https://github.com/ValueCell-ai/UClaw')}
+                  onClick={() => window.electron.openExternal('https://github.com/DepartureZSH/UClaw')}
                 >
                   {t('about.github')}
-                </Button>
-                <Button
-                  variant="link"
-                  className="h-auto p-0 text-[14px] text-blue-500 hover:text-blue-600 font-medium"
-                  onClick={() => window.electron.openExternal('https://icnnp7d0dymg.feishu.cn/wiki/UyfOwQ2cAiJIP6kqUW8cte5Bnlc')}
-                >
-                  {t('about.faq')}
                 </Button>
               </div>
             </div>

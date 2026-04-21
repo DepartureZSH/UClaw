@@ -41,7 +41,7 @@ import {
   ensureFeishuPluginInstalled,
   ensureWeComPluginInstalled,
 } from '../utils/plugin-install';
-import { updateSkillConfig, getSkillConfig, getAllSkillConfigs } from '../utils/skill-config';
+import { updateSkillConfig, getSkillConfig, getAllSkillConfigs, applyInitialPluginConfig } from '../utils/skill-config';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
 import { getProviderConfig } from '../utils/provider-registry';
 import { deviceOAuthManager, OAuthProviderType } from '../utils/device-oauth';
@@ -721,6 +721,11 @@ function registerSkillConfigHandlers(): void {
   // Get all skill configs
   ipcMain.handle('skill:getAllConfigs', async () => {
     return await getAllSkillConfigs();
+  });
+
+  // Apply initial plugin config to openclaw.json (called after first-time provider setup)
+  ipcMain.handle('openclaw:applyInitialConfig', async (_, apiKey: string, baseUrl: string) => {
+    await applyInitialPluginConfig(apiKey, baseUrl);
   });
 }
 

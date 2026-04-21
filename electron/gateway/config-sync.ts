@@ -18,7 +18,7 @@ function fsPath(filePath: string): string {
 import { getAllSettings } from '../utils/store';
 import { getApiKey, getDefaultProvider, getProvider } from '../utils/secure-storage';
 import { getProviderEnvVar, getKeyableProviderTypes } from '../utils/provider-registry';
-import { getOpenClawDir, getOpenClawEntryPath, isOpenClawPresent } from '../utils/paths';
+import { getOpenClawDir, getOpenClawEntryPath, isOpenClawPresent, getOpenClawConfigDir } from '../utils/paths';
 import { getUvMirrorEnv } from '../utils/uv-env';
 import { cleanupDanglingWeChatPluginState, listConfiguredChannelsFromConfig, readOpenClawConfig } from '../utils/channel-config';
 import { sanitizeOpenClawConfig, batchSyncConfigFields } from '../utils/openclaw-auth';
@@ -63,7 +63,7 @@ const BUILTIN_CHANNEL_EXTENSIONS = ['discord', 'telegram', 'qqbot'];
 
 function cleanupStaleBuiltInExtensions(): void {
   for (const ext of BUILTIN_CHANNEL_EXTENSIONS) {
-    const extDir = join(homedir(), '.openclaw', 'extensions', ext);
+    const extDir = join(getOpenClawConfigDir(), 'extensions', ext);
     if (existsSync(fsPath(extDir))) {
       logger.info(`[plugin] Removing stale built-in extension copy: ${ext}`);
       try {
@@ -109,7 +109,7 @@ function ensureConfiguredPluginsUpgraded(configuredChannels: string[]): void {
     if (!pluginInfo) continue;
     const { dirName, npmName } = pluginInfo;
 
-    const targetDir = join(homedir(), '.openclaw', 'extensions', dirName);
+    const targetDir = join(getOpenClawConfigDir(), 'extensions', dirName);
     const targetManifest = join(targetDir, 'openclaw.plugin.json');
     const isInstalled = existsSync(fsPath(targetManifest));
     const installedVersion = isInstalled ? readPluginVersion(join(targetDir, 'package.json')) : null;
@@ -124,7 +124,7 @@ function ensureConfiguredPluginsUpgraded(configuredChannels: string[]): void {
       if (!isInstalled || (sourceVersion && installedVersion && sourceVersion !== installedVersion)) {
         logger.info(`[plugin] ${isInstalled ? 'Auto-upgrading' : 'Installing'} ${channelType} plugin${isInstalled ? `: ${installedVersion} → ${sourceVersion}` : `: ${sourceVersion}`} (bundled)`);
         try {
-          mkdirSync(fsPath(join(homedir(), '.openclaw', 'extensions')), { recursive: true });
+          mkdirSync(fsPath(join(getOpenClawConfigDir(), 'extensions')), { recursive: true });
           rmSync(fsPath(targetDir), { recursive: true, force: true });
           cpSyncSafe(bundledDir, targetDir);
           fixupPluginManifest(targetDir);
@@ -154,7 +154,7 @@ function ensureConfiguredPluginsUpgraded(configuredChannels: string[]): void {
       logger.info(`[plugin] ${isInstalled ? 'Auto-upgrading' : 'Installing'} ${channelType} plugin${isInstalled ? `: ${installedVersion} → ${sourceVersion}` : `: ${sourceVersion}`} (dev/node_modules)`);
 
       try {
-        mkdirSync(fsPath(join(homedir(), '.openclaw', 'extensions')), { recursive: true });
+        mkdirSync(fsPath(join(getOpenClawConfigDir(), 'extensions')), { recursive: true });
         copyPluginFromNodeModules(npmPkgPath, targetDir, npmName);
         fixupPluginManifest(targetDir);
       } catch (err) {
@@ -440,6 +440,14 @@ export async function prepareGatewayLaunchContext(port: number): Promise<Gateway
     CLAWDBOT_SKIP_CHANNELS: skipChannels ? '1' : '',
     OPENCLAW_NO_RESPAWN: '1',
   };
+
+  // In portable mode, set OPENCLAW_HOME so the gateway resolves ALL paths
+  // (config, workspace, skills) under <portableRoot>/.openclaw/ instead of
+  // ~/.openclaw/. OPENCLAW_HOME overrides the home base for the entire gateway.
+  const portableRoot = process.env.UCLAW_PORTABLE_ROOT;
+  if (portableRoot) {
+    forkEnv.OPENCLAW_HOME = portableRoot;
+  }
 
   // Ensure extension-specific packages (e.g. grammy from the telegram
   // extension) are resolvable by shared dist/ chunks via symlinks in

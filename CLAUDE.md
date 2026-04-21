@@ -170,7 +170,9 @@ UClaw-USB/
 
 - **`electron/main/index.ts`**：`detectPortableDataDir()` 向上最多走 4 层查找 `data/`，支持多平台 USB 布局（macOS .app 内部路径深 4 层）。调用 `app.setPath('userData', ...)` 并设置 `process.env.UCLAW_PORTABLE_ROOT`。必须在 `requestSingleInstanceLock()` 之前执行。
 
-- **`electron/utils/paths.ts`**：`getOpenClawConfigDir()` 和 `getUClawConfigDir()` 检查 `UCLAW_PORTABLE_ROOT` 环境变量，存在时返回便携路径。
+- **`electron/utils/paths.ts`**：`getOpenClawConfigDir()` 检查 `UCLAW_PORTABLE_ROOT`，便携时返回 `<portableRoot>/openclaw/`。`getUClawConfigDir()` 返回 `<portableRoot>/uclaw/`。
+
+- **`electron/gateway/config-sync.ts`**：便携模式下向网关进程注入 `OPENCLAW_HOME=<portableRoot>`，让网关所有路径（config、workspace、skills）均解析到 `<portableRoot>/.openclaw/` 下，不读写本机 `~/.openclaw/`（openclaw 原生支持 `OPENCLAW_HOME` env var）。
 
 - **`electron/utils/store.ts`**：`createDefaultSettings()` 检查 `UCLAW_PORTABLE_ROOT`，便携模式下默认 `autoCheckUpdate: false`、`telemetryEnabled: false`、`launchAtStartup: false`。
 

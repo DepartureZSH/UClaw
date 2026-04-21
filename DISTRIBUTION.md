@@ -37,6 +37,16 @@ UClaw-USB/
 
 > **注意**：`resources/` 和 `locales/` 包含平台专用二进制，无法跨平台共用。只有 `data/`（用户配置）是共用的。
 
+`data/` 目录内部结构：
+
+```
+data/
+├── uclaw/         ← UClaw 设置（settings.json、日志等）
+└── .openclaw/     ← OpenClaw 配置（openclaw.json、skills/、workspace/ 等）
+```
+
+> 便携模式通过向网关进程注入 `OPENCLAW_HOME=<data>`，让网关所有路径（config、workspace、skills）均解析到 `data/.openclaw/` 下，不读写本机 `~/.openclaw/`。
+
 ---
 
 ## 构建步骤
