@@ -125,6 +125,7 @@ export interface ProviderAccount {
     email?: string;
     resourceUrl?: string;
     customModels?: string[];
+    pricingBase?: number;
   };
   createdAt: string;
   updatedAt: string;

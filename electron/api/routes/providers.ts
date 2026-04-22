@@ -98,7 +98,12 @@ export async function handleProviderRoutes(
 
   // Shared helper: fetch models + pricing from a new-api compatible endpoint.
   // Runs in the main process so it is not subject to browser CORS restrictions.
-  async function fetchModelsWithPricing(baseUrl: string, apiKey: string): Promise<{
+  // pricingBase: USD per million tokens when model_ratio=1 (default 2 = standard new-api).
+  async function fetchModelsWithPricing(
+    baseUrl: string,
+    apiKey: string,
+    pricingBase?: number,
+  ): Promise<{
     models: string[];
     pricing: Record<string, { input: number; output: number }>;
   }> {
@@ -116,18 +121,28 @@ export async function handleProviderRoutes(
             supported_endpoint_types?: string[];
             model_ratio?: number;
             completion_ratio?: number;
+            model_price?: number;
           }>;
           group_ratio?: Record<string, number>;
         };
         const groupRatio = pricingJson.group_ratio?.['default'] ?? 1;
+        const BASE = typeof pricingBase === 'number' && pricingBase > 0 ? pricingBase : 2;
         for (const item of pricingJson.data ?? []) {
           if (!(item.supported_endpoint_types ?? []).includes('openai')) continue;
           models.push(item.model_name);
           const r = item.model_ratio ?? 0;
-          pricing[item.model_name] = {
-            input: r * groupRatio,
-            output: r * groupRatio * (item.completion_ratio ?? 1),
-          };
+          if (typeof item.model_price === 'number') {
+            // Some new-api forks return actual USD/M price directly
+            pricing[item.model_name] = {
+              input: item.model_price,
+              output: item.model_price * (item.completion_ratio ?? 1),
+            };
+          } else {
+            pricing[item.model_name] = {
+              input: r * groupRatio * BASE,
+              output: r * groupRatio * (item.completion_ratio ?? 1) * BASE,
+            };
+          }
         }
       }
     } catch { /* pricing endpoint not available */ }
@@ -174,7 +189,8 @@ export async function handleProviderRoutes(
         return true;
       }
       const baseUrl = (account.baseUrl || 'https://chatbot.cn.unreachablecity.club/v1').replace(/\/$/, '');
-      const result = await fetchModelsWithPricing(baseUrl, apiKey);
+      const pricingBase = typeof account.metadata?.pricingBase === 'number' ? account.metadata.pricingBase : undefined;
+      const result = await fetchModelsWithPricing(baseUrl, apiKey, pricingBase);
       sendJson(res, 200, { success: true, ...result });
     } catch (error) {
       sendJson(res, 500, { success: false, error: String(error) });

@@ -291,6 +291,7 @@ export function ProvidersSettings() {
                   if (payload.updates.fallbackProviderIds !== undefined) {
                     updates.fallbackAccountIds = payload.updates.fallbackProviderIds;
                   }
+                  if (payload.updates.metadata !== undefined) updates.metadata = payload.updates.metadata;
                 }
                 await updateAccount(
                   item.account.id,
@@ -330,7 +331,7 @@ interface ProviderCardProps {
   onCancelEdit: () => void;
   onDelete: () => void;
   onSetDefault: () => void;
-  onSaveEdits: (payload: { newApiKey?: string; updates?: Partial<ProviderConfig> }) => Promise<void>;
+  onSaveEdits: (payload: { newApiKey?: string; updates?: Partial<ProviderConfig> & { metadata?: ProviderAccount['metadata'] } }) => Promise<void>;
   onValidateKey: (
     key: string,
     options?: { baseUrl?: string; apiProtocol?: ProviderAccount['apiProtocol'] }
@@ -372,9 +373,13 @@ function ProviderCard({
   const [saving, setSaving] = useState(false);
   const [arkMode, setArkMode] = useState<ArkMode>('apikey');
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchedPricing, setFetchedPricing] = useState<Record<string, { input: number; output: number }>>({});
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelError, setFetchModelError] = useState<string | null>(null);
   const [webSearchModel, setWebSearchModel] = useState('');
+  const [pricingBase, setPricingBase] = useState<string>(
+    account.metadata?.pricingBase != null ? String(account.metadata.pricingBase) : ''
+  );
 
   const typeInfo = PROVIDER_TYPE_INFO.find((t) => t.id === account.vendorId);
   const providerDocsUrl = getProviderDocsUrl(typeInfo, i18n.language);
@@ -436,6 +441,7 @@ function ProviderCard({
       setFetchedModels(ids);
       if (!ids.includes(modelId)) setModelId(ids[0]);
       if (data.pricing && Object.keys(data.pricing).length > 0) {
+        setFetchedPricing(data.pricing);
         invokeIpc('openclaw:syncModelPricing', 'new-api', data.pricing).catch(() => {});
       }
     } catch (e) {
@@ -474,7 +480,7 @@ function ProviderCard({
           return;
         }
 
-        const updates: Partial<ProviderConfig> = {};
+        const updates: Partial<ProviderConfig> & { metadata?: ProviderAccount['metadata'] } = {};
         if (typeInfo?.showBaseUrl && (baseUrl.trim() || undefined) !== (account.baseUrl || undefined)) {
           updates.baseUrl = baseUrl.trim() || undefined;
         }
@@ -494,6 +500,13 @@ function ProviderCard({
         }
         if (!fallbackProviderIdsEqual(fallbackProviderIds, account.fallbackAccountIds)) {
           updates.fallbackProviderIds = normalizeFallbackProviderIds(fallbackProviderIds);
+        }
+        if (account.vendorId === 'new-api') {
+          const parsedBase = parseFloat(pricingBase);
+          const validBase = !isNaN(parsedBase) && parsedBase > 0 ? parsedBase : undefined;
+          if (validBase !== account.metadata?.pricingBase) {
+            updates.metadata = { ...(account.metadata ?? {}), pricingBase: validBase };
+          }
         }
         if (Object.keys(updates).length > 0) {
           payload.updates = updates;
@@ -661,6 +674,20 @@ function ProviderCard({
                   />
                 </div>
               )}
+              {account.vendorId === 'new-api' && (
+                <div className="space-y-1.5">
+                  <Label className={currentLabelClasses}>定价基准 (USD/M · 倍率=1)</Label>
+                  <Input
+                    value={pricingBase}
+                    onChange={(e) => setPricingBase(e.target.value)}
+                    placeholder="留空使用默认 (2)"
+                    className={currentInputClasses}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    模型倍率=1 时每百万 token 的美元价格，用于计算实际费用。例：你的服务商收费为标准价的 2.2 倍则填 4.4。
+                  </p>
+                </div>
+              )}
               {showModelIdField && (
                 <div className="space-y-1.5 pt-2">
                   <div className="flex items-center justify-between">
@@ -686,9 +713,13 @@ function ProviderCard({
                         onChange={(e) => setModelId(e.target.value)}
                         className={cn(currentInputClasses, 'w-full appearance-none cursor-pointer px-3 pr-9')}
                       >
-                        {fetchedModels.map((m) => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
+                        {fetchedModels.map((m) => {
+                          const p = fetchedPricing[m];
+                          const priceText = p
+                            ? ` · ¥${(p.input * 7.3 / 1000).toFixed(4)}/K → ¥${(p.output * 7.3 / 1000).toFixed(4)}/K`
+                            : '';
+                          return <option key={m} value={m}>{m}{priceText}</option>;
+                        })}
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     </div>
@@ -1083,6 +1114,7 @@ function AddProviderDialog({
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchedPricingAdd, setFetchedPricingAdd] = useState<Record<string, { input: number; output: number }>>({});
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelError, setFetchModelError] = useState<string | null>(null);
   const [webSearchModel, setWebSearchModel] = useState('');
@@ -1312,6 +1344,7 @@ function AddProviderDialog({
       setWebSearchModel(defaultKimi);
       const pricing = data.pricing ?? {};
       if (Object.keys(pricing).length > 0) {
+        setFetchedPricingAdd(pricing);
         invokeIpc('openclaw:syncModelPricing', 'new-api', pricing).catch(() => {});
       }
     } catch (e) {
@@ -1618,9 +1651,13 @@ function AddProviderDialog({
                           onChange={(e) => { setModelId(e.target.value); setValidationError(null); }}
                           className={cn(inputClasses, 'w-full appearance-none cursor-pointer pr-9')}
                         >
-                          {fetchedModels.map((m) => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
+                          {fetchedModels.map((m) => {
+                            const p = fetchedPricingAdd[m];
+                            const priceText = p
+                              ? ` · ¥${(p.input * 7.3 / 1000).toFixed(4)}/K → ¥${(p.output * 7.3 / 1000).toFixed(4)}/K`
+                              : '';
+                            return <option key={m} value={m}>{m}{priceText}</option>;
+                          })}
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       </div>
