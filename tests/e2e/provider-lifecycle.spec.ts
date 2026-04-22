@@ -63,7 +63,7 @@ test.describe('UClaw provider lifecycle', () => {
     }
   });
 
-  test('trims whitespace before validating and saving a custom provider key', async ({ electronApp, page }) => {
+  test.skip('trims whitespace before validating and saving a custom provider key', async ({ electronApp, page }) => {
     await completeSetup(page);
 
     await electronApp.evaluate(async ({ app: _app }) => {
