@@ -291,7 +291,6 @@ export function ProvidersSettings() {
                   if (payload.updates.fallbackProviderIds !== undefined) {
                     updates.fallbackAccountIds = payload.updates.fallbackProviderIds;
                   }
-                  if (payload.updates.metadata !== undefined) updates.metadata = payload.updates.metadata;
                 }
                 await updateAccount(
                   item.account.id,
@@ -331,7 +330,7 @@ interface ProviderCardProps {
   onCancelEdit: () => void;
   onDelete: () => void;
   onSetDefault: () => void;
-  onSaveEdits: (payload: { newApiKey?: string; updates?: Partial<ProviderConfig> & { metadata?: ProviderAccount['metadata'] } }) => Promise<void>;
+  onSaveEdits: (payload: { newApiKey?: string; updates?: Partial<ProviderConfig> }) => Promise<void>;
   onValidateKey: (
     key: string,
     options?: { baseUrl?: string; apiProtocol?: ProviderAccount['apiProtocol'] }
@@ -377,9 +376,6 @@ function ProviderCard({
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelError, setFetchModelError] = useState<string | null>(null);
   const [webSearchModel, setWebSearchModel] = useState('');
-  const [pricingBase, setPricingBase] = useState<string>(
-    account.metadata?.pricingBase != null ? String(account.metadata.pricingBase) : ''
-  );
 
   const typeInfo = PROVIDER_TYPE_INFO.find((t) => t.id === account.vendorId);
   const providerDocsUrl = getProviderDocsUrl(typeInfo, i18n.language);
@@ -480,7 +476,7 @@ function ProviderCard({
           return;
         }
 
-        const updates: Partial<ProviderConfig> & { metadata?: ProviderAccount['metadata'] } = {};
+        const updates: Partial<ProviderConfig> = {};
         if (typeInfo?.showBaseUrl && (baseUrl.trim() || undefined) !== (account.baseUrl || undefined)) {
           updates.baseUrl = baseUrl.trim() || undefined;
         }
@@ -500,13 +496,6 @@ function ProviderCard({
         }
         if (!fallbackProviderIdsEqual(fallbackProviderIds, account.fallbackAccountIds)) {
           updates.fallbackProviderIds = normalizeFallbackProviderIds(fallbackProviderIds);
-        }
-        if (account.vendorId === 'new-api') {
-          const parsedBase = parseFloat(pricingBase);
-          const validBase = !isNaN(parsedBase) && parsedBase > 0 ? parsedBase : undefined;
-          if (validBase !== account.metadata?.pricingBase) {
-            updates.metadata = { ...(account.metadata ?? {}), pricingBase: validBase };
-          }
         }
         if (Object.keys(updates).length > 0) {
           payload.updates = updates;
@@ -672,20 +661,6 @@ function ProviderCard({
                     placeholder={getProtocolBaseUrlPlaceholder(apiProtocol)}
                     className={currentInputClasses}
                   />
-                </div>
-              )}
-              {account.vendorId === 'new-api' && (
-                <div className="space-y-1.5">
-                  <Label className={currentLabelClasses}>定价基准 (USD/M · 倍率=1)</Label>
-                  <Input
-                    value={pricingBase}
-                    onChange={(e) => setPricingBase(e.target.value)}
-                    placeholder="留空使用默认 (2)"
-                    className={currentInputClasses}
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    模型倍率=1 时每百万 token 的美元价格，用于计算实际费用。例：你的服务商收费为标准价的 2.2 倍则填 4.4。
-                  </p>
                 </div>
               )}
               {showModelIdField && (

@@ -2017,8 +2017,8 @@ export interface ModelCostEntry {
 }
 
 /**
- * Patch cost data onto existing model entries in openclaw.json for a given provider.
- * Only enriches models that are already registered; does not add new entries.
+ * Upsert cost data for model entries in openclaw.json for a given provider.
+ * Updates existing entries and creates new ones for models not yet registered.
  */
 export async function patchProviderModelCosts(
   providerKey: string,
@@ -2037,13 +2037,22 @@ export async function patchProviderModelCosts(
       ? (entry.models as Array<Record<string, unknown>>)
       : [];
 
-    entry.models = existingModels.map((m) => {
+    const existingIds = new Set(existingModels.map((m) => (typeof m.id === 'string' ? m.id : '')));
+
+    const patched = existingModels.map((m) => {
       const id = typeof m.id === 'string' ? m.id : '';
       const cost = costs[id];
       if (!cost) return m;
       return { ...m, cost: { input: cost.input, output: cost.output, cacheRead: 0, cacheWrite: 0 } };
     });
 
+    for (const [id, cost] of Object.entries(costs)) {
+      if (!existingIds.has(id)) {
+        patched.push({ id, name: id, cost: { input: cost.input, output: cost.output, cacheRead: 0, cacheWrite: 0 } });
+      }
+    }
+
+    entry.models = patched;
     providers[providerKey] = entry;
     models.providers = providers;
     config.models = models;

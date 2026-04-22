@@ -24,6 +24,7 @@ import { providerAccountToConfig } from '../../services/providers/provider-store
 import type { ProviderAccount } from '../../shared/providers/types';
 import { logger } from '../../utils/logger';
 import { proxyAwareFetch } from '../../utils/proxy-fetch';
+import { patchProviderModelCosts } from '../../utils/openclaw-auth';
 
 const legacyProviderRoutesWarned = new Set<string>();
 
@@ -68,6 +69,16 @@ export async function handleProviderRoutes(
       const account = await providerService.createAccount(body.account, body.apiKey);
       await syncSavedProviderToRuntime(providerAccountToConfig(account), body.apiKey, ctx.gatewayManager);
       sendJson(res, 200, { success: true, account });
+      // Async: fetch and persist model pricing for new-api accounts
+      if (account.vendorId === 'new-api' && body.apiKey) {
+        const baseUrl = (account.baseUrl || 'https://chatbot.cn.unreachablecity.club/v1').replace(/\/$/, '');
+        const pricingBase = typeof account.metadata?.pricingBase === 'number' ? account.metadata.pricingBase : undefined;
+        fetchModelsWithPricing(baseUrl, body.apiKey, pricingBase).then(({ pricing }) => {
+          if (Object.keys(pricing).length > 0) {
+            return patchProviderModelCosts('new-api', pricing);
+          }
+        }).catch((err) => logger.warn('Failed to auto-sync new-api pricing after create:', err));
+      }
     } catch (error) {
       sendJson(res, 500, { success: false, error: String(error) });
     }
@@ -221,6 +232,19 @@ export async function handleProviderRoutes(
       const nextAccount = await providerService.updateAccount(accountId, body.updates, body.apiKey);
       await syncUpdatedProviderToRuntime(providerAccountToConfig(nextAccount), body.apiKey, ctx.gatewayManager);
       sendJson(res, 200, { success: true, account: nextAccount });
+      // Async: re-fetch pricing when api key or baseUrl changed for new-api accounts
+      if (nextAccount.vendorId === 'new-api' && (body.apiKey || body.updates?.baseUrl !== undefined)) {
+        const apiKeyForPricing = body.apiKey ?? await getApiKey(accountId).catch(() => null);
+        if (apiKeyForPricing) {
+          const baseUrl = (nextAccount.baseUrl || 'https://chatbot.cn.unreachablecity.club/v1').replace(/\/$/, '');
+          const pricingBase = typeof nextAccount.metadata?.pricingBase === 'number' ? nextAccount.metadata.pricingBase : undefined;
+          fetchModelsWithPricing(baseUrl, apiKeyForPricing, pricingBase).then(({ pricing }) => {
+            if (Object.keys(pricing).length > 0) {
+              return patchProviderModelCosts('new-api', pricing);
+            }
+          }).catch((err) => logger.warn('Failed to auto-sync new-api pricing after update:', err));
+        }
+      }
     } catch (error) {
       sendJson(res, 500, { success: false, error: String(error) });
     }
