@@ -49,11 +49,13 @@ export function expandPath(path: string): string {
 
 /**
  * Get OpenClaw config directory.
- * In portable USB mode (UCLAW_PORTABLE_ROOT is set), resolves to
- * <portable-root>/openclaw instead of ~/.openclaw.
+ * Priority: explicit workspace dir → portable USB mode → ~/.openclaw (default).
+ * Workspace dir wins so that a user-selected path always overrides auto-detection.
  */
 export function getOpenClawConfigDir(): string {
-  const portableRoot = process.env.UCLAW_PORTABLE_ROOT;
+  const workspaceDir = process.env.UCLAW_WORKSPACE_DIR?.trim();
+  if (workspaceDir) return join(workspaceDir, '.openclaw');
+  const portableRoot = process.env.UCLAW_PORTABLE_ROOT?.trim();
   if (portableRoot) return join(portableRoot, '.openclaw');
   return join(homedir(), '.openclaw');
 }

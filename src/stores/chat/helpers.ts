@@ -130,13 +130,19 @@ function normalizeStreamingMessage(message: unknown): unknown {
 
 function normalizeComparableUserText(content: unknown): string {
   return getMessageText(content)
+    .replace(/\[media attached:[^\]]+\]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function getComparableAttachmentSignature(message: Pick<RawMessage, '_attachedFiles'>): string {
   const files = (message._attachedFiles || [])
-    .map((file) => file.filePath || `${file.fileName}|${file.mimeType}|${file.fileSize}`)
+    .map((file) => {
+      // Use filename+mimeType for path-agnostic comparison: staged paths (local) differ
+      // from server workspace paths, so filePath alone is not a reliable identifier.
+      if (file.fileName && file.mimeType) return `${file.fileName}|${file.mimeType}`;
+      return file.filePath || `${file.fileName}|${file.mimeType}|${file.fileSize}`;
+    })
     .filter(Boolean)
     .sort();
   return files.join('::');
@@ -158,10 +164,23 @@ function matchesOptimisticUserMessage(
   const sameAttachments = optimisticAttachments.length > 0 && optimisticAttachments === candidateAttachments;
 
   const hasOptimisticTimestamp = Number.isFinite(optimisticTimestampMs) && optimisticTimestampMs > 0;
-  const hasCandidateTimestamp = candidate.timestamp != null;
-  const timestampMatches = hasOptimisticTimestamp && hasCandidateTimestamp
-    ? Math.abs(toMs(candidate.timestamp as number) - optimisticTimestampMs) < 5000
-    : false;
+  const hasCandidateTimestamp = candidate.timestamp != null && (candidate.timestamp as number) !== 0;
+  const timestampDiffMs = hasOptimisticTimestamp && hasCandidateTimestamp
+    ? Math.abs(toMs(candidate.timestamp as number) - optimisticTimestampMs)
+    : null;
+  const timestampMatches = timestampDiffMs != null ? timestampDiffMs < 30000 : false;
+
+  console.log('[matchOptimistic]', {
+    sameText,
+    sameAttachments,
+    hasCandidateTimestamp,
+    timestampDiffMs,
+    timestampMatches,
+    optimisticText: optimisticText.slice(0, 40),
+    candidateText: candidateText.slice(0, 40),
+    candidateTimestamp: candidate.timestamp,
+    optimisticTimestampMs,
+  });
 
   if (sameText && sameAttachments) return true;
   if (sameText && (!optimisticAttachments || !candidateAttachments) && (timestampMatches || !hasCandidateTimestamp)) return true;

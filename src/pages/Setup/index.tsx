@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   XCircle,
   ExternalLink,
+  FolderOpen,
 } from 'lucide-react';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { Button } from '@/components/ui/button';
@@ -39,50 +40,20 @@ interface SetupStep {
 
 const STEP = {
   WELCOME: 0,
-  RUNTIME: 1,
-  AI_CONFIG: 2,
-  INSTALLING: 3,
-  COMPLETE: 4,
-} as const;
-
-const PORTABLE_STEP = {
-  WELCOME: 0,
-  CONFIG: 1,
-  COMPLETE: 2,
+  WORKSPACE: 1,
+  RUNTIME: 2,
+  AI_CONFIG: 3,
+  INSTALLING: 4,
+  COMPLETE: 5,
 } as const;
 
 const getSteps = (t: TFunction): SetupStep[] => [
-  {
-    id: 'welcome',
-    title: t('steps.welcome.title'),
-    description: t('steps.welcome.description'),
-  },
-  {
-    id: 'runtime',
-    title: t('steps.runtime.title'),
-    description: t('steps.runtime.description'),
-  },
-  {
-    id: 'ai-config',
-    title: 'AI 配置',
-    description: '配置 New API 接口和模型',
-  },
-  {
-    id: 'installing',
-    title: t('steps.installing.title'),
-    description: t('steps.installing.description'),
-  },
-  {
-    id: 'complete',
-    title: t('steps.complete.title'),
-    description: t('steps.complete.description'),
-  },
-];
-
-const getPortableSteps = (): SetupStep[] => [
-  { id: 'welcome', title: '欢迎', description: '开始使用 UClaw 便携版' },
-  { id: 'config', title: 'AI 配置', description: '配置 New API 接口' },
-  { id: 'complete', title: '完成', description: '一切就绪' },
+  { id: 'welcome',    title: t('steps.welcome.title'),    description: t('steps.welcome.description') },
+  { id: 'workspace',  title: '工作目录',                    description: '选择 AI 数据的存储位置' },
+  { id: 'runtime',    title: t('steps.runtime.title'),    description: t('steps.runtime.description') },
+  { id: 'ai-config',  title: 'AI 配置',                    description: '配置 New API 接口和模型' },
+  { id: 'installing', title: t('steps.installing.title'), description: t('steps.installing.description') },
+  { id: 'complete',   title: t('steps.complete.title'),   description: t('steps.complete.description') },
 ];
 
 // Default skills to auto-install (no additional API keys required)
@@ -109,84 +80,63 @@ export function Setup() {
   const { t } = useTranslation(['setup', 'channels']);
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<number>(STEP.WELCOME);
-  const [isPortable, setIsPortable] = useState<boolean | null>(null);
 
-  // Setup state
   const [installedSkills, setInstalledSkills] = useState<string[]>([]);
   const [runtimeChecksPassed, setRuntimeChecksPassed] = useState(false);
-  // AI config step: tracks whether user has saved a provider (portable or standard)
   const [aiConfigSaved, setAiConfigSaved] = useState(false);
+  const [workspaceDir, setWorkspaceDir] = useState('');
 
   const markSetupComplete = useSettingsStore((state) => state.markSetupComplete);
 
-  useEffect(() => {
-    invokeIpc<boolean>('app:isPortable').then(setIsPortable).catch(() => setIsPortable(false));
-  }, []);
-
-  const steps = isPortable ? getPortableSteps() : getSteps(t);
-  const safeStepIndex = Number.isInteger(currentStep)
-    ? Math.min(Math.max(currentStep, 0), steps.length - 1)
-    : 0;
-  const step = steps[safeStepIndex] ?? steps[0];
+  const steps = getSteps(t);
+  const safeStepIndex = Math.min(Math.max(currentStep, 0), steps.length - 1);
+  const step = steps[safeStepIndex];
   const isFirstStep = safeStepIndex === 0;
   const isLastStep = safeStepIndex === steps.length - 1;
 
   const canProceed = useMemo(() => {
-    if (isPortable) {
-      switch (safeStepIndex) {
-        case PORTABLE_STEP.WELCOME: return true;
-        case PORTABLE_STEP.CONFIG: return aiConfigSaved;
-        case PORTABLE_STEP.COMPLETE: return true;
-        default: return true;
-      }
-    }
     switch (safeStepIndex) {
-      case STEP.WELCOME: return true;
-      case STEP.RUNTIME: return runtimeChecksPassed;
-      case STEP.AI_CONFIG: return true; // skippable in standard mode
+      case STEP.WELCOME:    return true;
+      case STEP.WORKSPACE:  return true;      // optional
+      case STEP.RUNTIME:    return runtimeChecksPassed;
+      case STEP.AI_CONFIG:  return true;      // skippable
       case STEP.INSTALLING: return false;
-      case STEP.COMPLETE: return true;
+      case STEP.COMPLETE:   return true;
       default: return true;
     }
-  }, [isPortable, safeStepIndex, runtimeChecksPassed, aiConfigSaved]);
+  }, [safeStepIndex, runtimeChecksPassed]);
 
   const handleNext = async () => {
+    if (safeStepIndex === STEP.WORKSPACE) {
+      await invokeIpc('app:applyWorkspaceDir', workspaceDir);
+    }
     if (isLastStep) {
       markSetupComplete();
-      toast.success(t('complete.title'));
-      navigate('/');
+      if (workspaceDir) {
+        // Kick off gateway restart (OPENCLAW_HOME now points to new workspace).
+        // Don't await — navigate immediately; main page handles reconnect state.
+        invokeIpc('gateway:restart').catch(() => {});
+        toast.success(t('complete.title'));
+        navigate('/');
+      } else {
+        toast.success(t('complete.title'));
+        navigate('/');
+      }
     } else {
       setCurrentStep((i) => i + 1);
     }
   };
 
-  const handleBack = () => {
-    setCurrentStep((i) => Math.max(i - 1, 0));
-  };
+  const handleBack = () => setCurrentStep((i) => Math.max(i - 1, 0));
 
-  const handleSkip = () => {
-    markSetupComplete();
-    navigate('/');
-  };
+  const handleSkip = () => { markSetupComplete(); navigate('/'); };
 
   const handleInstallationComplete = useCallback((skills: string[]) => {
     setInstalledSkills(skills);
     setTimeout(() => { setCurrentStep((i) => i + 1); }, 1000);
   }, []);
 
-  // Show nothing until we know if portable (avoids flash)
-  if (isPortable === null) {
-    return (
-      <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-        <TitleBar />
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      </div>
-    );
-  }
-
-  const isInstallingStep = !isPortable && safeStepIndex === STEP.INSTALLING;
+  const isInstallingStep = safeStepIndex === STEP.INSTALLING;
 
   return (
     <div data-testid="setup-page" className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
@@ -242,29 +192,12 @@ export function Setup() {
 
             {/* Step-specific content */}
             <div className="rounded-xl bg-card text-card-foreground border shadow-sm p-8 mb-8">
-              {safeStepIndex === 0 && <WelcomeContent />}
-              {isPortable && safeStepIndex === PORTABLE_STEP.CONFIG && (
-                <PortableConfigContent onSaved={() => setAiConfigSaved(true)} />
-              )}
-              {isPortable && safeStepIndex === PORTABLE_STEP.COMPLETE && (
-                <CompleteContent installedSkills={[]} />
-              )}
-              {!isPortable && safeStepIndex === STEP.RUNTIME && (
-                <RuntimeContent onStatusChange={setRuntimeChecksPassed} />
-              )}
-              {!isPortable && safeStepIndex === STEP.AI_CONFIG && (
-                <PortableConfigContent onSaved={() => setAiConfigSaved(true)} />
-              )}
-              {!isPortable && safeStepIndex === STEP.INSTALLING && (
-                <InstallingContent
-                  skills={getDefaultSkills(t)}
-                  onComplete={handleInstallationComplete}
-                  onSkip={() => setCurrentStep((i) => i + 1)}
-                />
-              )}
-              {!isPortable && safeStepIndex === STEP.COMPLETE && (
-                <CompleteContent installedSkills={installedSkills} />
-              )}
+              {safeStepIndex === STEP.WELCOME    && <WelcomeContent />}
+              {safeStepIndex === STEP.WORKSPACE  && <WorkspaceContent value={workspaceDir} onChange={setWorkspaceDir} />}
+              {safeStepIndex === STEP.RUNTIME    && <RuntimeContent onStatusChange={setRuntimeChecksPassed} />}
+              {safeStepIndex === STEP.AI_CONFIG  && <PortableConfigContent onSaved={() => setAiConfigSaved(true)} />}
+              {safeStepIndex === STEP.INSTALLING && <InstallingContent skills={getDefaultSkills(t)} onComplete={handleInstallationComplete} onSkip={() => setCurrentStep((i) => i + 1)} />}
+              {safeStepIndex === STEP.COMPLETE   && <CompleteContent installedSkills={installedSkills} />}
             </div>
 
             {/* Navigation - hidden during installation step */}
@@ -279,20 +212,22 @@ export function Setup() {
                   )}
                 </div>
                 <div className="flex gap-2">
-                  {!isLastStep && !isPortable && safeStepIndex !== STEP.RUNTIME && safeStepIndex !== STEP.AI_CONFIG && (
+                  {/* 跳过整个 setup（不在 Runtime/AI config 步骤时可见） */}
+                  {!isLastStep && safeStepIndex !== STEP.RUNTIME && safeStepIndex !== STEP.AI_CONFIG && (
                     <Button data-testid="setup-skip-button" variant="ghost" onClick={handleSkip}>
                       {t('nav.skipSetup')}
                     </Button>
                   )}
-                  {/* AI config step in standard mode: allow skipping (unlike portable mode) */}
-                  {!isPortable && safeStepIndex === STEP.AI_CONFIG && !aiConfigSaved && (
-                    <Button variant="ghost" onClick={() => setCurrentStep((i) => i + 1)}>
-                      跳过
+                  {/* Workspace：已选目录时提供"清除"快捷键 */}
+                  {safeStepIndex === STEP.WORKSPACE && workspaceDir && (
+                    <Button variant="ghost" onClick={() => setWorkspaceDir('')}>
+                      使用默认目录
                     </Button>
                   )}
-                  {isPortable && !isLastStep && (
-                    <Button variant="ghost" onClick={handleSkip}>
-                      {t('nav.skipSetup')}
+                  {/* AI config：可跳过 */}
+                  {safeStepIndex === STEP.AI_CONFIG && !aiConfigSaved && (
+                    <Button variant="ghost" onClick={() => setCurrentStep((i) => i + 1)}>
+                      跳过
                     </Button>
                   )}
                   <Button data-testid="setup-next-button" onClick={handleNext} disabled={!canProceed}>
@@ -364,6 +299,69 @@ function WelcomeContent() {
           {t('welcome.features.crossPlatform')}
         </li>
       </ul>
+    </div>
+  );
+}
+
+// ==================== Workspace Step ====================
+
+interface WorkspaceContentProps {
+  value: string;
+  onChange: (dir: string) => void;
+}
+
+function WorkspaceContent({ value, onChange }: WorkspaceContentProps) {
+  const [selecting, setSelecting] = useState(false);
+
+  const handleSelect = async () => {
+    setSelecting(true);
+    try {
+      const dir = await invokeIpc<string | null>('app:selectWorkspaceDir');
+      if (dir) onChange(dir);
+    } finally {
+      setSelecting(false);
+    }
+  };
+
+  // Use the same separator already present in the selected path (handles Windows \ vs Unix /)
+  const sep = value.includes('\\') ? '\\' : '/';
+  const previewPath = value ? `${value}${sep}.openclaw${sep}` : '';
+
+  return (
+    <div className="space-y-5">
+      <p className="text-sm text-muted-foreground">
+        选择一个目录用于存储 AI 会话、技能、插件等数据，与本机
+        <code className="text-xs bg-muted px-1 py-0.5 rounded mx-1">~/.openclaw</code>
+        完全隔离。不选择则使用系统默认位置。
+      </p>
+
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">工作目录</Label>
+        <div className="flex gap-2">
+          <div className="flex-1 flex items-center h-10 rounded-md border border-input bg-muted/50 px-3 text-sm font-mono text-muted-foreground truncate">
+            {value || '未选择（使用默认 ~/.openclaw）'}
+          </div>
+          <Button variant="outline" onClick={handleSelect} disabled={selecting}>
+            {selecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
+          </Button>
+        </div>
+        {value && (
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground underline"
+            onClick={() => onChange('')}
+          >
+            清除，使用默认目录
+          </button>
+        )}
+      </div>
+
+      {value && (
+        <div className="p-3 rounded-lg bg-muted border border-border text-sm text-foreground flex items-start gap-2">
+          <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0 text-green-500" />
+          <span>数据将存储在 <span className="font-mono text-xs break-all text-muted-foreground">{previewPath}</span></span>
+        </div>
+      )}
     </div>
   );
 }
@@ -709,22 +707,31 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState('deepseek-chat');
+  const [selectedWebSearchModel, setSelectedWebSearchModel] = useState('');
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [modelPricing, setModelPricing] = useState<Record<string, { input: number; output: number }>>({});
 
   const handleFetchModels = async () => {
     const key = apiKey.trim();
     if (!key) { setFetchError('请先输入 API Key'); return; }
-    setFetchingModels(true); setFetchError(null); setFetchedModels([]);
+    setFetchingModels(true); setFetchError(null); setFetchedModels([]); setModelPricing({});
     try {
       const url = (baseUrl.trim() || DEFAULT_BASE_URL).replace(/\/$/, '');
-      const res = await fetch(`${url}/models`, { headers: { Authorization: `Bearer ${key}` } });
-      if (!res.ok) throw new Error(`HTTP ${res.status} — 请检查接口地址和 API Key`);
-      const json = await res.json() as { data?: { id: string }[] };
-      const ids = (json.data ?? []).map((m) => m.id).filter(Boolean);
+      const data = await hostApiFetch<{ success: boolean; models: string[]; pricing?: Record<string, { input: number; output: number }>; error?: string }>(
+        '/api/fetch-models',
+        { method: 'POST', body: JSON.stringify({ baseUrl: url, apiKey: key }) },
+      );
+      if (!data.success) throw new Error(data.error ?? '获取失败');
+      const ids = data.models ?? [];
       if (ids.length === 0) throw new Error('未返回任何模型，请确认接口地址正确');
       setFetchedModels(ids);
+      setModelPricing(data.pricing ?? {});
       if (!ids.includes(selectedModel)) setSelectedModel(ids[0]);
+      // Auto-select web search model: prefer kimi-k2.5, else first kimi-* model
+      const kimiModels = ids.filter((m) => m.startsWith('kimi-'));
+      const defaultKimi = kimiModels.includes('kimi-k2.5') ? 'kimi-k2.5' : (kimiModels[0] ?? '');
+      setSelectedWebSearchModel(defaultKimi);
     } catch (e) { setFetchError(String(e)); }
     finally { setFetchingModels(false); }
   };
@@ -754,8 +761,10 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
           body: JSON.stringify({ accountId: data.account.id }),
         });
       }
-      // Write initial plugin config (moonshot web search + browser) to openclaw.json
-      await invokeIpc('openclaw:applyInitialConfig', key, resolvedBase);
+      await invokeIpc('openclaw:applyInitialConfig', key, resolvedBase, selectedWebSearchModel || undefined);
+      if (Object.keys(modelPricing).length > 0) {
+        await invokeIpc('openclaw:syncModelPricing', 'new-api', modelPricing);
+      }
       onSaved();
       toast.success('AI 提供商已配置');
     } catch (e) { setSaveError(String(e)); }
@@ -818,6 +827,26 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
           <p className="text-xs text-muted-foreground py-2">请先填写 API Key 并点击「获取模型列表」</p>
         )}
       </div>
+
+      {fetchedModels.some((m) => m.startsWith('kimi-')) && (
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium">网页搜索模型 (Kimi)</Label>
+          <div className="relative">
+            <select
+              value={selectedWebSearchModel}
+              onChange={(e) => setSelectedWebSearchModel(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm appearance-none cursor-pointer pr-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">不启用网页搜索</option>
+              {fetchedModels.filter((m) => m.startsWith('kimi-')).map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <ChevronRight className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 h-4 w-4 text-muted-foreground" />
+          </div>
+          <p className="text-xs text-muted-foreground">通过 Kimi 模型的联网能力进行网页搜索</p>
+        </div>
+      )}
 
       {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 

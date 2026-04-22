@@ -104,9 +104,18 @@ export function createHistoryActions(
         if (get().sending && userMsgAt) {
           const userMsMs = toMs(userMsgAt);
           const optimistic = getLatestOptimisticUserMessage(get().messages, userMsMs);
+          const userMsgsInHistory = enrichedMessages.filter(m => m.role === 'user');
+          console.log('[applyLoaded] optimistic check', {
+            optimisticFound: !!optimistic,
+            optimisticContent: optimistic ? String(optimistic.content).slice(0, 60) : null,
+            optimisticTimestamp: optimistic?.timestamp,
+            userMsMs,
+            userMsgsInHistory: userMsgsInHistory.map(m => ({ ts: m.timestamp, content: String(m.content).slice(0, 40) })),
+          });
           const hasMatchingUser = optimistic
             ? enrichedMessages.some((message) => matchesOptimisticUserMessage(message, optimistic, userMsMs))
             : false;
+          console.log('[applyLoaded] hasMatchingUser:', hasMatchingUser, '→ appending optimistic:', !hasMatchingUser && !!optimistic);
           if (optimistic && !hasMatchingUser) {
             finalMessages = [...enrichedMessages, optimistic];
           }

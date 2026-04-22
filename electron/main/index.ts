@@ -49,6 +49,23 @@ import { browserOAuthManager } from '../utils/browser-oauth';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
 import { syncAllProviderAuthToRuntime } from '../services/providers/provider-runtime-sync';
 
+// On Windows, set console output code page to UTF-8 (65001) early so that
+// CJK characters in gateway stderr logs are not garbled when displayed in
+// the terminal. chcp.com shares the parent's console and calls
+// SetConsoleOutputCP(65001) on the shared console window.
+if (process.platform === 'win32') {
+  try {
+    // Use spawnSync imported below — child_process is a CJS built-in available via require
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { spawnSync } = require('child_process') as typeof import('child_process');
+    // Inherit stdin so the child process shares the parent's console handle,
+    // allowing SetConsoleOutputCP(65001) to take effect on the shared console.
+    spawnSync('chcp.com', ['65001'], { stdio: ['inherit', 'ignore', 'ignore'], windowsHide: true });
+  } catch {
+    // non-fatal — best effort
+  }
+}
+
 const WINDOWS_APP_USER_MODEL_ID = 'app.uclaw.desktop';
 const isE2EMode = process.env.UCLAW_E2E === '1';
 const requestedUserDataDir = process.env.UCLAW_USER_DATA_DIR?.trim();
@@ -66,13 +83,16 @@ if (isE2EMode && requestedUserDataDir) {
 // Must run before requestSingleInstanceLock() — the lock file lives in userData.
 function detectPortableDataDir(): string | null {
   if (isE2EMode) return null;
+  // In dev mode (not packaged), skip auto-detection entirely.
+  // The source repo may have a data/ folder for testing, but that should not
+  // trigger portable mode unless the developer explicitly sets UCLAW_PORTABLE_ROOT.
+  if (!app.isPackaged) return null;
   try {
-    // In dev mode app.getAppPath() is the project root — check it first so a
-    // local data/ folder is found without relying on the exe path heuristic.
-    const appPathCandidate = join(app.getAppPath(), 'data');
-    if (existsSync(appPathCandidate)) return appPathCandidate;
-
-    // In packaged mode walk up from the executable (covers all USB layouts).
+    // Walk up from the executable (covers all USB layouts):
+    //   windows/UClaw.exe          → ../data/          (1 level up)
+    //   linux/uclaw                → ../data/          (1 level up)
+    //   macos/UClaw.app/.../UClaw  → ../../../../data/ (4 levels up through .app bundle)
+    //   UClaw.exe (flat layout)    → ./data/           (0 levels up)
     let dir = dirname(app.getPath('exe'));
     for (let i = 0; i <= 4; i++) {
       const candidate = join(dir, 'data');
@@ -339,6 +359,16 @@ async function initialize(): Promise<void> {
   logger.debug(
     `Runtime: platform=${process.platform}/${process.arch}, electron=${process.versions.electron}, node=${process.versions.node}, packaged=${app.isPackaged}, pid=${process.pid}, ppid=${process.ppid}`
   );
+
+  // Apply custom workspace dir before gateway starts.
+  // UCLAW_WORKSPACE_DIR takes priority over UCLAW_PORTABLE_ROOT (see paths.ts).
+  if (!isE2EMode) {
+    const workspaceDir = await getSetting('workspaceDir');
+    if (workspaceDir) {
+      process.env.UCLAW_WORKSPACE_DIR = workspaceDir;
+      logger.info(`[workspace] Using custom workspace: ${workspaceDir}`);
+    }
+  }
 
   if (!isE2EMode) {
     // Warm up network optimization (non-blocking)

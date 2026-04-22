@@ -48,6 +48,9 @@ export interface AppSettings {
   autoDownloadUpdate: boolean;
   skippedVersions: string[];
 
+  // Workspace
+  workspaceDir: string;
+
   // UI State
   sidebarCollapsed: boolean;
   devModeUnlocked: boolean;
@@ -102,6 +105,9 @@ function createDefaultSettings(): AppSettings {
     autoCheckUpdate: !isPortable,
     autoDownloadUpdate: false,
     skippedVersions: [],
+
+    // Workspace
+    workspaceDir: '',
 
     // UI State
     sidebarCollapsed: false,

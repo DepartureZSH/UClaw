@@ -96,6 +96,69 @@ export async function handleProviderRoutes(
     return true;
   }
 
+  // Shared helper: fetch models + pricing from a new-api compatible endpoint.
+  // Runs in the main process so it is not subject to browser CORS restrictions.
+  async function fetchModelsWithPricing(baseUrl: string, apiKey: string): Promise<{
+    models: string[];
+    pricing: Record<string, { input: number; output: number }>;
+  }> {
+    const apiRoot = baseUrl.replace(/\/v1$/, '');
+    const authHeaders = { Authorization: `Bearer ${apiKey}` };
+    let models: string[] = [];
+    let pricing: Record<string, { input: number; output: number }> = {};
+
+    try {
+      const pricingRes = await proxyAwareFetch(`${apiRoot}/api/pricing`, { headers: authHeaders });
+      if (pricingRes.ok) {
+        const pricingJson = await pricingRes.json() as {
+          data?: Array<{
+            model_name: string;
+            supported_endpoint_types?: string[];
+            model_ratio?: number;
+            completion_ratio?: number;
+          }>;
+          group_ratio?: Record<string, number>;
+        };
+        const groupRatio = pricingJson.group_ratio?.['default'] ?? 1;
+        for (const item of pricingJson.data ?? []) {
+          if (!(item.supported_endpoint_types ?? []).includes('openai')) continue;
+          models.push(item.model_name);
+          const r = item.model_ratio ?? 0;
+          pricing[item.model_name] = {
+            input: r * groupRatio,
+            output: r * groupRatio * (item.completion_ratio ?? 1),
+          };
+        }
+      }
+    } catch { /* pricing endpoint not available */ }
+
+    if (models.length === 0) {
+      const modelsRes = await proxyAwareFetch(`${baseUrl}/models`, { headers: authHeaders });
+      if (!modelsRes.ok) throw new Error(`Upstream HTTP ${modelsRes.status}`);
+      const json = await modelsRes.json() as { data?: { id: string }[] };
+      models = (json.data ?? []).map((m) => m.id).filter(Boolean);
+    }
+
+    return { models, pricing };
+  }
+
+  // POST /api/fetch-models — proxy for renderer: no CORS, accepts {baseUrl, apiKey} in body.
+  if (url.pathname === '/api/fetch-models' && req.method === 'POST') {
+    try {
+      const body = await parseJsonBody<{ baseUrl: string; apiKey: string }>(req);
+      const baseUrl = (body.baseUrl || '').replace(/\/$/, '');
+      if (!baseUrl || !body.apiKey) {
+        sendJson(res, 400, { success: false, error: 'baseUrl and apiKey are required' });
+        return true;
+      }
+      const result = await fetchModelsWithPricing(baseUrl, body.apiKey);
+      sendJson(res, 200, { success: true, ...result });
+    } catch (error) {
+      sendJson(res, 500, { success: false, error: String(error) });
+    }
+    return true;
+  }
+
   if (url.pathname.startsWith('/api/provider-accounts/') && url.pathname.endsWith('/models') && req.method === 'GET') {
     const inner = decodeURIComponent(url.pathname.slice('/api/provider-accounts/'.length, -'/models'.length));
     const accountId = inner.replace(/\/$/, '');
@@ -111,16 +174,8 @@ export async function handleProviderRoutes(
         return true;
       }
       const baseUrl = (account.baseUrl || 'https://chatbot.cn.unreachablecity.club/v1').replace(/\/$/, '');
-      const modelsRes = await proxyAwareFetch(`${baseUrl}/models`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
-      if (!modelsRes.ok) {
-        sendJson(res, 502, { success: false, error: `Upstream HTTP ${modelsRes.status}` });
-        return true;
-      }
-      const json = await modelsRes.json() as { data?: { id: string }[] };
-      const models = (json.data ?? []).map((m) => m.id).filter(Boolean);
-      sendJson(res, 200, { success: true, models });
+      const result = await fetchModelsWithPricing(baseUrl, apiKey);
+      sendJson(res, 200, { success: true, ...result });
     } catch (error) {
       sendJson(res, 500, { success: false, error: String(error) });
     }

@@ -3,6 +3,7 @@
  * Application configuration
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Sun,
   Moon,
@@ -11,6 +12,7 @@ import {
   ExternalLink,
   Copy,
   FileText,
+  RotateCcw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -48,6 +50,7 @@ type ControlUiInfo = {
 
 export function Settings() {
   const { t } = useTranslation('settings');
+  const navigate = useNavigate();
   const {
     theme,
     setTheme,
@@ -75,6 +78,7 @@ export function Settings() {
     setAutoDownloadUpdate,
     devModeUnlocked,
     setDevModeUnlocked,
+    resetSetup,
     telemetryEnabled,
     setTelemetryEnabled,
   } = useSettingsStore();
@@ -1027,6 +1031,28 @@ export function Settings() {
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  {/* Reset Setup */}
+                  <div className="flex items-center justify-between pt-2">
+                    <div>
+                      <Label className="text-[14px] font-medium text-foreground/80">重新运行 Setup 向导</Label>
+                      <p className="text-[13px] text-muted-foreground mt-0.5">
+                        重置引导流程，下次启动或刷新时将重新显示 Setup 页面。
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl h-9 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 shrink-0"
+                      onClick={() => {
+                        resetSetup();
+                        navigate('/setup');
+                      }}
+                    >
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      重新 Setup
+                    </Button>
                   </div>
                 </div>
               </div>

@@ -138,6 +138,13 @@ const electronAPI = {
         'openclaw:getSkillsDir',
         'openclaw:getCliCommand',
         'openclaw:applyInitialConfig',
+        'openclaw:updateWebSearchModel',
+        'openclaw:syncModelPricing',
+        'app:isPortable',
+        'app:portableRoot',
+        'app:getWorkspaceDir',
+        'app:selectWorkspaceDir',
+        'app:applyWorkspaceDir',
       ];
 
       if (validChannels.includes(channel)) {

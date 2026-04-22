@@ -1580,26 +1580,40 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
         removeLegacyMoonshotKimiSearchConfig(config);
         modified = true;
         console.log('[sanitize] Migrated legacy "tools.web.search.kimi" to "plugins.entries.moonshot.config.webSearch"');
-      } else {
-        const plugins = isPlainRecord(config.plugins) ? config.plugins : null;
-        const entries = plugins && isPlainRecord(plugins.entries) ? plugins.entries : null;
-        const moonshot = entries && isPlainRecord(entries[OPENCLAW_PROVIDER_KEY_MOONSHOT])
-          ? entries[OPENCLAW_PROVIDER_KEY_MOONSHOT] as Record<string, unknown>
-          : null;
-        const moonshotConfig = moonshot && isPlainRecord(moonshot.config) ? moonshot.config as Record<string, unknown> : null;
-        const webSearch = moonshotConfig && isPlainRecord(moonshotConfig.webSearch)
-          ? moonshotConfig.webSearch as Record<string, unknown>
-          : null;
-        if (webSearch && 'apiKey' in webSearch) {
-          delete webSearch.apiKey;
-          moonshotConfig!.webSearch = webSearch;
-          modified = true;
-        }
       }
       if (hadInlineApiKey) {
         console.log('[sanitize] Removing stale key "tools.web.search.kimi.apiKey" from openclaw.json');
       } else if (hadLegacyKimi) {
         console.log('[sanitize] Removing legacy key "tools.web.search.kimi" from openclaw.json');
+      }
+    }
+
+    // Strip any inline apiKey from plugins.entries.*.config.webSearch unconditionally.
+    // Secrets must never be stored in openclaw.json — they are injected as env vars
+    // (KIMI_API_KEY / MOONSHOT_API_KEY) into the Gateway process at launch time.
+    {
+      const plugins = isPlainRecord(config.plugins) ? config.plugins : null;
+      const entries = plugins && isPlainRecord(plugins.entries) ? plugins.entries : null;
+      if (entries) {
+        for (const pluginKey of Object.keys(entries)) {
+          const pluginValue = entries[pluginKey];
+          if (!isPlainRecord(pluginValue)) continue;
+          const pluginConfig = isPlainRecord(pluginValue.config) ? pluginValue.config as Record<string, unknown> : null;
+          if (!pluginConfig) continue;
+          const webSearch = isPlainRecord(pluginConfig.webSearch) ? pluginConfig.webSearch as Record<string, unknown> : null;
+          if (webSearch && 'apiKey' in webSearch) {
+            delete webSearch.apiKey;
+            pluginConfig.webSearch = webSearch;
+            (pluginValue as Record<string, unknown>).config = pluginConfig;
+            entries[pluginKey] = pluginValue;
+            modified = true;
+            console.log(`[sanitize] Removed inline apiKey from plugins.entries.${pluginKey}.config.webSearch (use env var instead)`);
+          }
+        }
+        if (modified) {
+          (plugins as Record<string, unknown>).entries = entries;
+          config.plugins = plugins;
+        }
       }
     }
 
@@ -1996,3 +2010,44 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
 }
 
 export { getProviderEnvVar } from './provider-registry';
+
+export interface ModelCostEntry {
+  input: number;   // USD per million tokens
+  output: number;  // USD per million tokens
+}
+
+/**
+ * Patch cost data onto existing model entries in openclaw.json for a given provider.
+ * Only enriches models that are already registered; does not add new entries.
+ */
+export async function patchProviderModelCosts(
+  providerKey: string,
+  costs: Record<string, ModelCostEntry>,
+): Promise<void> {
+  if (Object.keys(costs).length === 0) return;
+  return withConfigLock(async () => {
+    const config = await readOpenClawJson();
+    const models = (config.models || {}) as Record<string, unknown>;
+    const providers = (models.providers || {}) as Record<string, unknown>;
+    const providerEntry = providers[providerKey];
+    if (!providerEntry || typeof providerEntry !== 'object') return;
+
+    const entry = providerEntry as Record<string, unknown>;
+    const existingModels = Array.isArray(entry.models)
+      ? (entry.models as Array<Record<string, unknown>>)
+      : [];
+
+    entry.models = existingModels.map((m) => {
+      const id = typeof m.id === 'string' ? m.id : '';
+      const cost = costs[id];
+      if (!cost) return m;
+      return { ...m, cost: { input: cost.input, output: cost.output, cacheRead: 0, cacheWrite: 0 } };
+    });
+
+    providers[providerKey] = entry;
+    models.providers = providers;
+    config.models = models;
+    await writeOpenClawJson(config);
+    console.log(`Patched model costs for provider "${providerKey}" (${Object.keys(costs).length} models)`);
+  });
+}

@@ -325,7 +325,7 @@ export async function runOpenClawDoctorRepair(): Promise<boolean> {
     });
 
     child.stdout?.on('data', (data) => {
-      const raw = data.toString();
+      const raw = (data as Buffer).toString('utf-8');
       for (const line of raw.split(/\r?\n/)) {
         const normalized = line.trim();
         if (!normalized) continue;
@@ -334,7 +334,7 @@ export async function runOpenClawDoctorRepair(): Promise<boolean> {
     });
 
     child.stderr?.on('data', (data) => {
-      const raw = data.toString();
+      const raw = (data as Buffer).toString('utf-8');
       for (const line of raw.split(/\r?\n/)) {
         const normalized = line.trim();
         if (!normalized) continue;

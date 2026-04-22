@@ -417,6 +417,7 @@ export async function prepareGatewayLaunchContext(port: number): Promise<Gateway
   const binPathExists = existsSync(binPath);
 
   const { providerEnv, loadedProviderKeyCount } = await loadProviderEnv();
+
   const { skipChannels, channelStartupSummary } = await resolveChannelStartupPolicy();
   const uvEnv = await getUvMirrorEnv();
   const proxyEnv = buildProxyEnv(appSettings);
@@ -439,13 +440,22 @@ export async function prepareGatewayLaunchContext(port: number): Promise<Gateway
     OPENCLAW_SKIP_CHANNELS: skipChannels ? '1' : '',
     CLAWDBOT_SKIP_CHANNELS: skipChannels ? '1' : '',
     OPENCLAW_NO_RESPAWN: '1',
+    // Force Python subprocess to use UTF-8 for stdout/stderr on all platforms
+    PYTHONUTF8: '1',
+    PYTHONIOENCODING: 'utf-8',
+    // Expose the active provider API key as KIMI_API_KEY so the moonshot plugin's
+    // web-search provider falls back to it via readProviderEnvValue(["KIMI_API_KEY",
+    // "MOONSHOT_API_KEY"]) without needing to store any secret in openclaw.json.
+    ...(providerEnv['NEW_API_KEY'] ? { KIMI_API_KEY: providerEnv['NEW_API_KEY'] } : {}),
   };
 
-  // In portable mode, set OPENCLAW_HOME so the gateway resolves ALL paths
-  // (config, workspace, skills) under <portableRoot>/.openclaw/ instead of
-  // ~/.openclaw/. OPENCLAW_HOME overrides the home base for the entire gateway.
-  const portableRoot = process.env.UCLAW_PORTABLE_ROOT;
-  if (portableRoot) {
+  // Set OPENCLAW_HOME so the gateway resolves all paths to the correct location.
+  // Explicit workspace dir takes priority over portable-mode auto-detection.
+  const workspaceDir = process.env.UCLAW_WORKSPACE_DIR?.trim();
+  const portableRoot = process.env.UCLAW_PORTABLE_ROOT?.trim();
+  if (workspaceDir) {
+    forkEnv.OPENCLAW_HOME = workspaceDir;
+  } else if (portableRoot) {
     forkEnv.OPENCLAW_HOME = portableRoot;
   }
 

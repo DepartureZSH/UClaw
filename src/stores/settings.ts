@@ -62,6 +62,7 @@ interface SettingsState {
   setSidebarCollapsed: (value: boolean) => void;
   setDevModeUnlocked: (value: boolean) => void;
   markSetupComplete: () => void;
+  resetSetup: () => void;
   resetSettings: () => void;
 }
 
@@ -175,6 +176,7 @@ export const useSettingsStore = create<SettingsState>()(
         }).catch(() => { });
       },
       markSetupComplete: () => set({ setupComplete: true }),
+      resetSetup: () => set({ setupComplete: false }),
       resetSettings: () => set(defaultSettings),
     }),
     {

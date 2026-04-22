@@ -400,42 +400,74 @@ export async function ensurePreinstalledSkillsInstalled(): Promise<void> {
  * Enables the moonshot web search plugin (reusing the provider's apiKey/baseUrl)
  * and the browser plugin, and sets the tool profile to full.
  */
-export async function applyInitialPluginConfig(apiKey: string, baseUrl: string): Promise<void> {
+export async function applyInitialPluginConfig(_apiKey: string, baseUrl: string, webSearchModel?: string): Promise<void> {
     return withConfigLock(async () => {
         const config = await readConfig();
+
+        const moonshotEntry = webSearchModel
+            ? {
+                config: {
+                    webSearch: {
+                        baseUrl,
+                        model: webSearchModel,
+                    },
+                },
+                enabled: true,
+            }
+            : { enabled: false };
 
         config.plugins = {
             ...(config.plugins || {}),
             entries: {
                 ...((config.plugins?.entries) || {}),
-                moonshot: {
-                    config: {
-                        webSearch: {
-                            apiKey,
-                            baseUrl,
-                            model: 'kimi-k2.5',
-                        },
-                    },
-                    enabled: true,
-                },
-                browser: {
-                    enabled: true,
-                },
+                moonshot: moonshotEntry,
+                browser: { enabled: true },
             },
         };
 
         config.tools = {
             ...(config.tools || {}),
             web: {
-                search: {
-                    enabled: true,
-                    provider: 'kimi',
-                },
+                search: webSearchModel
+                    ? { enabled: true, provider: 'kimi' }
+                    : { enabled: false },
             },
             profile: 'full',
         };
 
         await writeConfig(config);
         logger.info('Applied initial plugin config to openclaw.json');
+    });
+}
+
+/**
+ * Update only the moonshot webSearch model (and baseUrl) in openclaw.json.
+ * Called from settings when the user changes the web search model after initial setup.
+ */
+export async function updateMoonshotWebSearchModel(model: string | null, baseUrl: string): Promise<void> {
+    return withConfigLock(async () => {
+        const config = await readConfig();
+
+        const entries = ((config.plugins?.entries) || {}) as Record<string, unknown>;
+        if (model) {
+            entries.moonshot = {
+                ...(typeof entries.moonshot === 'object' && entries.moonshot !== null ? entries.moonshot : {}),
+                config: { webSearch: { baseUrl, model } },
+                enabled: true,
+            };
+        } else {
+            entries.moonshot = { enabled: false };
+        }
+        config.plugins = { ...(config.plugins || {}), entries };
+
+        const tools = (config.tools || {}) as Record<string, unknown>;
+        tools.web = {
+            ...((typeof tools.web === 'object' && tools.web !== null) ? tools.web as Record<string, unknown> : {}),
+            search: model ? { enabled: true, provider: 'kimi' } : { enabled: false },
+        };
+        config.tools = tools;
+
+        await writeConfig(config);
+        logger.info(`Updated moonshot webSearch model to "${model ?? 'disabled'}"`);
     });
 }

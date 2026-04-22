@@ -720,3 +720,145 @@ describe('auth-backed provider discovery', () => {
     await expect(getActiveOpenClawProviders()).resolves.toEqual(new Set());
   });
 });
+
+describe('syncWebSearchApiKeysFromEnv', () => {
+  beforeEach(async () => {
+    await rm(testHome, { recursive: true, force: true });
+    await vi.resetModules();
+  });
+
+  it('resolves env-var placeholder in webSearch.apiKey to real key', async () => {
+    await writeOpenClawJson({
+      plugins: {
+        entries: {
+          moonshot: {
+            enabled: true,
+            config: {
+              webSearch: {
+                apiKey: 'NEW_API_KEY',
+                baseUrl: 'https://chatbot.cn.unreachablecity.club/v1',
+                model: 'kimi-k2.5',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const { syncWebSearchApiKeysFromEnv } = await import('@electron/utils/openclaw-auth');
+    await syncWebSearchApiKeysFromEnv({ NEW_API_KEY: 'sk-real-token-12345' });
+
+    const config = await readOpenClawJson();
+    const webSearch = (config.plugins as Record<string, unknown> | undefined
+      ? ((config.plugins as Record<string, unknown>).entries as Record<string, unknown> | undefined)
+      : undefined)?.['moonshot'] as Record<string, unknown> | undefined;
+    const ws = (webSearch?.config as Record<string, unknown> | undefined)?.webSearch as Record<string, unknown> | undefined;
+    expect(ws?.apiKey).toBe('sk-real-token-12345');
+  });
+
+  it('does not modify apiKey when placeholder is not in providerEnv', async () => {
+    await writeOpenClawJson({
+      plugins: {
+        entries: {
+          moonshot: {
+            enabled: true,
+            config: {
+              webSearch: {
+                apiKey: 'SOME_OTHER_KEY',
+                baseUrl: 'https://example.com/v1',
+                model: 'kimi-k2.5',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const { syncWebSearchApiKeysFromEnv } = await import('@electron/utils/openclaw-auth');
+    await syncWebSearchApiKeysFromEnv({ NEW_API_KEY: 'sk-real-token-12345' });
+
+    const config = await readOpenClawJson();
+    const entries = (config.plugins as Record<string, unknown>)?.entries as Record<string, unknown>;
+    const ws = ((entries?.moonshot as Record<string, unknown>)?.config as Record<string, unknown>)?.webSearch as Record<string, unknown>;
+    expect(ws?.apiKey).toBe('SOME_OTHER_KEY');
+  });
+
+  it('does not modify apiKey when it is already a real token (not env-var format)', async () => {
+    await writeOpenClawJson({
+      plugins: {
+        entries: {
+          moonshot: {
+            enabled: true,
+            config: {
+              webSearch: {
+                apiKey: 'sk-real-existing-token',
+                baseUrl: 'https://example.com/v1',
+                model: 'kimi-k2.5',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const { syncWebSearchApiKeysFromEnv } = await import('@electron/utils/openclaw-auth');
+    await syncWebSearchApiKeysFromEnv({ NEW_API_KEY: 'sk-new-token' });
+
+    const config = await readOpenClawJson();
+    const entries = (config.plugins as Record<string, unknown>)?.entries as Record<string, unknown>;
+    const ws = ((entries?.moonshot as Record<string, unknown>)?.config as Record<string, unknown>)?.webSearch as Record<string, unknown>;
+    // lowercase 'sk-...' does not match /^[A-Z][A-Z0-9_]*$/, so no replacement
+    expect(ws?.apiKey).toBe('sk-real-existing-token');
+  });
+
+  it('is a no-op when providerEnv is empty', async () => {
+    await writeOpenClawJson({
+      plugins: {
+        entries: {
+          moonshot: {
+            enabled: true,
+            config: { webSearch: { apiKey: 'NEW_API_KEY', model: 'kimi-k2.5' } },
+          },
+        },
+      },
+    });
+
+    const { syncWebSearchApiKeysFromEnv } = await import('@electron/utils/openclaw-auth');
+    await syncWebSearchApiKeysFromEnv({});
+
+    const config = await readOpenClawJson();
+    const entries = (config.plugins as Record<string, unknown>)?.entries as Record<string, unknown>;
+    const ws = ((entries?.moonshot as Record<string, unknown>)?.config as Record<string, unknown>)?.webSearch as Record<string, unknown>;
+    expect(ws?.apiKey).toBe('NEW_API_KEY');
+  });
+
+  it('resolves placeholders across multiple plugin entries', async () => {
+    await writeOpenClawJson({
+      plugins: {
+        entries: {
+          moonshot: {
+            enabled: true,
+            config: { webSearch: { apiKey: 'NEW_API_KEY', model: 'kimi-k2.5' } },
+          },
+          'some-other-plugin': {
+            enabled: true,
+            config: { webSearch: { apiKey: 'CUSTOM_API_KEY', model: 'some-model' } },
+          },
+        },
+      },
+    });
+
+    const { syncWebSearchApiKeysFromEnv } = await import('@electron/utils/openclaw-auth');
+    await syncWebSearchApiKeysFromEnv({
+      NEW_API_KEY: 'sk-token-for-new-api',
+      CUSTOM_API_KEY: 'sk-token-for-custom',
+    });
+
+    const config = await readOpenClawJson();
+    const entries = (config.plugins as Record<string, unknown>)?.entries as Record<string, unknown>;
+    const ws1 = ((entries?.moonshot as Record<string, unknown>)?.config as Record<string, unknown>)?.webSearch as Record<string, unknown>;
+    const ws2 = ((entries?.['some-other-plugin'] as Record<string, unknown>)?.config as Record<string, unknown>)?.webSearch as Record<string, unknown>;
+    expect(ws1?.apiKey).toBe('sk-token-for-new-api');
+    expect(ws2?.apiKey).toBe('sk-token-for-custom');
+  });
+});

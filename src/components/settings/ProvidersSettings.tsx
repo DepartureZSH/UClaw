@@ -374,6 +374,7 @@ function ProviderCard({
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelError, setFetchModelError] = useState<string | null>(null);
+  const [webSearchModel, setWebSearchModel] = useState('');
 
   const typeInfo = PROVIDER_TYPE_INFO.find((t) => t.id === account.vendorId);
   const providerDocsUrl = getProviderDocsUrl(typeInfo, i18n.language);
@@ -426,11 +427,17 @@ function ProviderCard({
     setFetchingModels(true);
     setFetchModelError(null);
     try {
-      const data = await hostApiFetch(`/api/provider-accounts/${encodeURIComponent(account.id)}/models`);
-      const ids: string[] = (data as { models: string[] }).models ?? [];
+      const data = await hostApiFetch(`/api/provider-accounts/${encodeURIComponent(account.id)}/models`) as {
+        models: string[];
+        pricing?: Record<string, { input: number; output: number }>;
+      };
+      const ids = data.models ?? [];
       if (ids.length === 0) throw new Error('未返回任何模型');
       setFetchedModels(ids);
       if (!ids.includes(modelId)) setModelId(ids[0]);
+      if (data.pricing && Object.keys(data.pricing).length > 0) {
+        invokeIpc('openclaw:syncModelPricing', 'new-api', data.pricing).catch(() => {});
+      }
     } catch (e) {
       setFetchModelError(String(e));
     } finally {
@@ -697,6 +704,30 @@ function ProviderCard({
                   {account.vendorId === 'new-api' && fetchModelError && (
                     <p className="text-[11px] text-red-500">{fetchModelError}</p>
                   )}
+                </div>
+              )}
+              {account.vendorId === 'new-api' && fetchedModels.some((m) => m.startsWith('kimi-')) && (
+                <div className="space-y-1.5">
+                  <Label className={currentLabelClasses}>网页搜索模型 (Kimi)</Label>
+                  <div className="relative">
+                    <select
+                      value={webSearchModel}
+                      onChange={(e) => {
+                        const m = e.target.value;
+                        setWebSearchModel(m);
+                        const baseUrl = (account.baseUrl || '').replace(/\/$/, '');
+                        invokeIpc('openclaw:updateWebSearchModel', m || null, baseUrl).catch(() => {});
+                      }}
+                      className={cn(currentInputClasses, 'w-full appearance-none cursor-pointer px-3 pr-9')}
+                    >
+                      <option value="">不启用网页搜索</option>
+                      {fetchedModels.filter((m) => m.startsWith('kimi-')).map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">通过 Kimi 模型的联网能力进行网页搜索</p>
                 </div>
               )}
               {account.vendorId === 'ark' && codePlanPreset && (
@@ -1054,6 +1085,7 @@ function AddProviderDialog({
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelError, setFetchModelError] = useState<string | null>(null);
+  const [webSearchModel, setWebSearchModel] = useState('');
 
   // OAuth Flow State
   const [oauthFlowing, setOauthFlowing] = useState(false);
@@ -1264,15 +1296,24 @@ function AddProviderDialog({
     setFetchingModels(true);
     setFetchModelError(null);
     try {
-      const res = await fetch('https://chatbot.cn.unreachablecity.club/v1/models', {
-        headers: { Authorization: `Bearer ${key}` },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      const ids: string[] = (json.data ?? []).map((m: { id: string }) => m.id).filter(Boolean);
+      const url = (baseUrl.trim() || 'https://chatbot.cn.unreachablecity.club/v1').replace(/\/$/, '');
+      // Route through the backend to avoid CORS restrictions
+      const data = await hostApiFetch<{ success: boolean; models: string[]; pricing?: Record<string, { input: number; output: number }>; error?: string }>(
+        '/api/fetch-models',
+        { method: 'POST', body: JSON.stringify({ baseUrl: url, apiKey: key }) },
+      );
+      if (!data.success) throw new Error(data.error ?? '获取失败');
+      const ids = data.models ?? [];
       if (ids.length === 0) throw new Error('未返回任何模型');
       setFetchedModels(ids);
       if (!ids.includes(modelId)) setModelId(ids[0]);
+      const kimiModels = ids.filter((m) => m.startsWith('kimi-'));
+      const defaultKimi = kimiModels.includes('kimi-k2.5') ? 'kimi-k2.5' : (kimiModels[0] ?? '');
+      setWebSearchModel(defaultKimi);
+      const pricing = data.pricing ?? {};
+      if (Object.keys(pricing).length > 0) {
+        invokeIpc('openclaw:syncModelPricing', 'new-api', pricing).catch(() => {});
+      }
     } catch (e) {
       setFetchModelError(String(e));
     } finally {
@@ -1352,6 +1393,10 @@ function AddProviderDialog({
               : vendorMap.get(selectedType)?.defaultAuthMode || 'api_key',
         }
       );
+      if (selectedType === 'new-api' && webSearchModel) {
+        const resolvedBase = (baseUrl.trim() || 'https://chatbot.cn.unreachablecity.club/v1').replace(/\/$/, '');
+        invokeIpc('openclaw:updateWebSearchModel', webSearchModel, resolvedBase).catch(() => {});
+      }
     } catch {
       // error already handled via toast in parent
     } finally {
@@ -1591,6 +1636,25 @@ function AddProviderDialog({
                     )}
                     {fetchModelError && (
                       <p className="text-[12px] text-red-500">{fetchModelError}</p>
+                    )}
+                    {fetchedModels.some((m) => m.startsWith('kimi-')) && (
+                      <div className="space-y-1.5 pt-1">
+                        <Label className={labelClasses}>网页搜索模型 (Kimi)</Label>
+                        <div className="relative">
+                          <select
+                            value={webSearchModel}
+                            onChange={(e) => setWebSearchModel(e.target.value)}
+                            className={cn(inputClasses, 'w-full appearance-none cursor-pointer pr-9')}
+                          >
+                            <option value="">不启用网页搜索</option>
+                            {fetchedModels.filter((m) => m.startsWith('kimi-')).map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">通过 Kimi 模型的联网能力进行网页搜索</p>
+                      </div>
                     )}
                   </div>
                 )}

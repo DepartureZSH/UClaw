@@ -174,7 +174,7 @@ export async function launchGatewayProcess(options: {
     });
 
     child.stderr?.on('data', (data) => {
-      const raw = data.toString();
+      const raw = (data as Buffer).toString('utf-8');
       for (const line of raw.split(/\r?\n/)) {
         options.onStderrLine(line);
       }

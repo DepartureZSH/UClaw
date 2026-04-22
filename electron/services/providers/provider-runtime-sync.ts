@@ -541,9 +541,15 @@ export async function syncUpdatedProviderToRuntime(
     logger.warn('[provider-runtime] Failed to sync per-agent model registries after provider update:', err);
   }
 
+  // A full restart is required when the API key changes so that env vars
+  // (e.g. NEW_API_KEY) are re-injected by config-sync for all consumers
+  // including plugins like moonshot webSearch that reference them.
   scheduleGatewayRefresh(
     gatewayManager,
-    `Scheduling Gateway reload after updating provider "${ock}" config`,
+    apiKey !== undefined
+      ? `Scheduling Gateway restart after updating provider "${ock}" config (key changed)`
+      : `Scheduling Gateway reload after updating provider "${ock}" config`,
+    apiKey !== undefined ? { mode: 'restart' } : undefined,
   );
 }
 

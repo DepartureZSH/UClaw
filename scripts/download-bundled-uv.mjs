@@ -4,7 +4,11 @@ import 'zx/globals';
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const UV_VERSION = '0.10.0';
-const BASE_URL = `https://github.com/astral-sh/uv/releases/download/${UV_VERSION}`;
+const GITHUB_BASE = `https://github.com/astral-sh/uv/releases/download/${UV_VERSION}`;
+// Set UV_MIRROR env var to a GitHub proxy, e.g. https://ghproxy.com/
+// If unset, falls back to direct GitHub access.
+const MIRROR = process.env.UV_MIRROR?.replace(/\/$/, '') ?? '';
+const BASE_URL = MIRROR ? `${MIRROR}/${GITHUB_BASE}` : GITHUB_BASE;
 const OUTPUT_BASE = path.join(ROOT_DIR, 'resources', 'bin');
 
 // Mapping Node platforms/archs to uv release naming

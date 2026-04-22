@@ -187,11 +187,11 @@ export class ClawHubService {
             let stderr = '';
 
             child.stdout.on('data', (data) => {
-                stdout += data.toString();
+                stdout += (data as Buffer).toString('utf-8');
             });
 
             child.stderr.on('data', (data) => {
-                stderr += data.toString();
+                stderr += (data as Buffer).toString('utf-8');
             });
 
             child.on('error', (error) => {

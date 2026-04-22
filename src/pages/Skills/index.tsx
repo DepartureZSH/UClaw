@@ -465,7 +465,7 @@ export function Skills() {
     if (!a.enabled && b.enabled) return 1;
     if (a.isCore && !b.isCore) return -1;
     if (!a.isCore && b.isCore) return 1;
-    return a.name.localeCompare(b.name);
+    return (a.name ?? '').localeCompare(b.name ?? '');
   });
 
   const sourceStats = {

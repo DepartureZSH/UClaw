@@ -18,6 +18,8 @@ import { getAllSettings, getSetting, resetSettings, setSetting, type AppSettings
 import {
   saveProviderKeyToOpenClaw,
   removeProviderFromOpenClaw,
+  patchProviderModelCosts,
+  type ModelCostEntry,
 } from '../utils/openclaw-auth';
 import { syncProxyConfigToOpenClaw } from '../utils/openclaw-proxy';
 import { buildOpenClawControlUiUrl } from '../utils/openclaw-control-ui';
@@ -41,7 +43,7 @@ import {
   ensureFeishuPluginInstalled,
   ensureWeComPluginInstalled,
 } from '../utils/plugin-install';
-import { updateSkillConfig, getSkillConfig, getAllSkillConfigs, applyInitialPluginConfig } from '../utils/skill-config';
+import { updateSkillConfig, getSkillConfig, getAllSkillConfigs, applyInitialPluginConfig, updateMoonshotWebSearchModel } from '../utils/skill-config';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
 import { getProviderConfig } from '../utils/provider-registry';
 import { deviceOAuthManager, OAuthProviderType } from '../utils/device-oauth';
@@ -724,8 +726,18 @@ function registerSkillConfigHandlers(): void {
   });
 
   // Apply initial plugin config to openclaw.json (called after first-time provider setup)
-  ipcMain.handle('openclaw:applyInitialConfig', async (_, apiKey: string, baseUrl: string) => {
-    await applyInitialPluginConfig(apiKey, baseUrl);
+  ipcMain.handle('openclaw:applyInitialConfig', async (_, apiKey: string, baseUrl: string, webSearchModel?: string) => {
+    await applyInitialPluginConfig(apiKey, baseUrl, webSearchModel);
+  });
+
+  // Update moonshot webSearch model in openclaw.json (called from settings after initial setup)
+  ipcMain.handle('openclaw:updateWebSearchModel', async (_, model: string | null, baseUrl: string) => {
+    await updateMoonshotWebSearchModel(model, baseUrl);
+  });
+
+  // Sync model pricing data into openclaw.json model entries
+  ipcMain.handle('openclaw:syncModelPricing', async (_, providerKey: string, costs: Record<string, ModelCostEntry>) => {
+    await patchProviderModelCosts(providerKey, costs);
   });
 }
 
@@ -2192,6 +2204,27 @@ function registerAppHandlers(): void {
 
   ipcMain.handle('app:isPortable', () => !!process.env.UCLAW_PORTABLE_ROOT);
   ipcMain.handle('app:portableRoot', () => process.env.UCLAW_PORTABLE_ROOT ?? null);
+
+  ipcMain.handle('app:getWorkspaceDir', () => process.env.UCLAW_WORKSPACE_DIR ?? '');
+
+  ipcMain.handle('app:selectWorkspaceDir', async () => {
+    const result = await dialog.showOpenDialog({
+      title: '选择工作目录',
+      properties: ['openDirectory', 'createDirectory'],
+      buttonLabel: '选择此目录',
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle('app:applyWorkspaceDir', async (_, dir: string) => {
+    await setSetting('workspaceDir', dir);
+    if (dir) {
+      process.env.UCLAW_WORKSPACE_DIR = dir;
+    } else {
+      delete process.env.UCLAW_WORKSPACE_DIR;
+    }
+  });
 }
 
 function registerSettingsHandlers(gatewayManager: GatewayManager): void {
