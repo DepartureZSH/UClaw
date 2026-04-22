@@ -158,7 +158,7 @@ export const PROVIDER_TYPE_INFO: ProviderTypeInfo[] = [
     defaultModelId: 'deepseek-chat',
   },
   { id: 'ollama', name: 'Ollama', icon: '🦙', placeholder: 'Not required', requiresApiKey: false, hidden: true },
-  { id: 'custom', name: 'Custom', icon: '⚙️', placeholder: 'API key...', requiresApiKey: true, hidden: true },
+  { id: 'custom', name: 'Custom', icon: '⚙️', placeholder: 'API key...', requiresApiKey: true },
 ];
 
 /** Get the SVG logo URL for a provider type, falls back to undefined */
