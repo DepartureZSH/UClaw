@@ -819,7 +819,13 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
               onChange={(e) => setSelectedModel(e.target.value)}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm appearance-none cursor-pointer pr-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {fetchedModels.map((m) => <option key={m} value={m}>{m}</option>)}
+              {fetchedModels.map((m) => {
+                const p = modelPricing[m];
+                const priceText = p && (p.input > 0 || p.output > 0)
+                  ? ` · ¥${(p.input * 7.3 / 1000).toFixed(4)}/K → ¥${(p.output * 7.3 / 1000).toFixed(4)}/K`
+                  : '';
+                return <option key={m} value={m}>{m}{priceText}</option>;
+              })}
             </select>
             <ChevronRight className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 h-4 w-4 text-muted-foreground" />
           </div>

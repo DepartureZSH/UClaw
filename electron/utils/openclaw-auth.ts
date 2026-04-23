@@ -2017,8 +2017,9 @@ export interface ModelCostEntry {
 }
 
 /**
- * Upsert cost data for model entries in openclaw.json for a given provider.
- * Updates existing entries and creates new ones for models not yet registered.
+ * Patch cost data for existing model entries in openclaw.json for a given provider.
+ * Only updates entries already in the models array — never creates new entries.
+ * Skips entries where both input and output are zero to avoid overwriting good data.
  */
 export async function patchProviderModelCosts(
   providerKey: string,
@@ -2037,26 +2038,23 @@ export async function patchProviderModelCosts(
       ? (entry.models as Array<Record<string, unknown>>)
       : [];
 
-    const existingIds = new Set(existingModels.map((m) => (typeof m.id === 'string' ? m.id : '')));
-
+    let patchedCount = 0;
     const patched = existingModels.map((m) => {
       const id = typeof m.id === 'string' ? m.id : '';
       const cost = costs[id];
-      if (!cost) return m;
+      // Skip if no pricing data, or if both values are zero (don't overwrite with bad data)
+      if (!cost || (cost.input === 0 && cost.output === 0)) return m;
+      patchedCount++;
       return { ...m, cost: { input: cost.input, output: cost.output, cacheRead: 0, cacheWrite: 0 } };
     });
 
-    for (const [id, cost] of Object.entries(costs)) {
-      if (!existingIds.has(id)) {
-        patched.push({ id, name: id, cost: { input: cost.input, output: cost.output, cacheRead: 0, cacheWrite: 0 } });
-      }
-    }
+    if (patchedCount === 0) return;
 
     entry.models = patched;
     providers[providerKey] = entry;
     models.providers = providers;
     config.models = models;
     await writeOpenClawJson(config);
-    console.log(`Patched model costs for provider "${providerKey}" (${Object.keys(costs).length} models)`);
+    console.log(`Patched model costs for provider "${providerKey}" (${patchedCount} of ${existingModels.length} models updated)`);
   });
 }

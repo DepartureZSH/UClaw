@@ -25,6 +25,7 @@ import type { ProviderAccount } from '../../shared/providers/types';
 import { logger } from '../../utils/logger';
 import { proxyAwareFetch } from '../../utils/proxy-fetch';
 import { patchProviderModelCosts } from '../../utils/openclaw-auth';
+import { parsePricingResponse } from '../../utils/new-api-pricing';
 
 const legacyProviderRoutesWarned = new Set<string>();
 
@@ -126,35 +127,10 @@ export async function handleProviderRoutes(
     try {
       const pricingRes = await proxyAwareFetch(`${apiRoot}/api/pricing`, { headers: authHeaders });
       if (pricingRes.ok) {
-        const pricingJson = await pricingRes.json() as {
-          data?: Array<{
-            model_name: string;
-            supported_endpoint_types?: string[];
-            model_ratio?: number;
-            completion_ratio?: number;
-            model_price?: number;
-          }>;
-          group_ratio?: Record<string, number>;
-        };
-        const groupRatio = pricingJson.group_ratio?.['default'] ?? 1;
-        const BASE = typeof pricingBase === 'number' && pricingBase > 0 ? pricingBase : 2;
-        for (const item of pricingJson.data ?? []) {
-          if (!(item.supported_endpoint_types ?? []).includes('openai')) continue;
-          models.push(item.model_name);
-          const r = item.model_ratio ?? 0;
-          if (typeof item.model_price === 'number') {
-            // Some new-api forks return actual USD/M price directly
-            pricing[item.model_name] = {
-              input: item.model_price,
-              output: item.model_price * (item.completion_ratio ?? 1),
-            };
-          } else {
-            pricing[item.model_name] = {
-              input: r * groupRatio * BASE,
-              output: r * groupRatio * (item.completion_ratio ?? 1) * BASE,
-            };
-          }
-        }
+        const pricingJson = await pricingRes.json();
+        const parsed = parsePricingResponse(pricingJson, pricingBase);
+        models = parsed.models;
+        pricing = parsed.pricing;
       }
     } catch { /* pricing endpoint not available */ }
 
