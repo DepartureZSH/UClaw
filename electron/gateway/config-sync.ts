@@ -360,6 +360,33 @@ async function loadProviderEnv(): Promise<{ providerEnv: Record<string, string>;
     }
   }
 
+  // The moonshot web-search plugin resolves its API key from the env vars
+  // KIMI_API_KEY or MOONSHOT_API_KEY (in that order).  When the active provider
+  // is a compatible endpoint like `new-api` its secret is stored under a
+  // different env var name (e.g. NEW_API_KEY).  If kimi web-search is enabled
+  // and KIMI_API_KEY is not yet in the env map, inject an alias so the plugin
+  // can find the key without requiring an inline apiKey in openclaw.json.
+  try {
+    if (!providerEnv['KIMI_API_KEY'] && !providerEnv['MOONSHOT_API_KEY']) {
+      const rawCfg = await readOpenClawConfig();
+      const tools = rawCfg?.tools as Record<string, unknown> | undefined;
+      const web = tools && typeof tools.web === 'object' && tools.web !== null ? tools.web as Record<string, unknown> : null;
+      const search = web && typeof web.search === 'object' && web.search !== null ? web.search as Record<string, unknown> : null;
+      const kimiEnabled = search?.enabled === true && search?.provider === 'kimi';
+      if (kimiEnabled) {
+        // Find the first provider key whose env var resolves to a non-empty value
+        // and use it as the KIMI_API_KEY alias.
+        const kimiKey = Object.values(providerEnv).find(Boolean);
+        if (kimiKey) {
+          providerEnv['KIMI_API_KEY'] = kimiKey;
+          logger.info('[config-sync] Aliased KIMI_API_KEY from compatible provider for kimi web-search');
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn('[config-sync] Failed to inject KIMI_API_KEY alias:', err);
+  }
+
   return { providerEnv, loadedProviderKeyCount };
 }
 
