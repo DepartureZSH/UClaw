@@ -3,12 +3,15 @@
  * Handles routing and global providers
  */
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { Component, useEffect } from 'react';
+import { Component, useEffect, useState } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { Toaster } from 'sonner';
+import { AlertTriangle, Copy } from 'lucide-react';
 import i18n from './i18n';
 import { MainLayout } from './components/layout/MainLayout';
+import { TitleBar } from './components/layout/TitleBar';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
 import { Models } from './pages/Models';
 import { Chat } from './pages/Chat';
 import { Agents } from './pages/Agents';
@@ -20,9 +23,23 @@ import { Setup } from './pages/Setup';
 import { useSettingsStore } from './stores/settings';
 import { useGatewayStore } from './stores/gateway';
 import { useProviderStore } from './stores/providers';
-import { applyGatewayTransportPreference } from './lib/api-client';
+import { applyGatewayTransportPreference, invokeIpc } from './lib/api-client';
 import { rendererExtensionRegistry } from './extensions/registry';
 import { loadExternalRendererExtensions } from './extensions/_ext-bridge.generated';
+
+type PortableDiagnostics = {
+  platform: string;
+  isPortable: boolean;
+  portableRoot: string | null;
+  workspaceDir: string | null;
+  exePath: string;
+  appPath: string;
+  userDataDir: string;
+  isAppTranslocated: boolean;
+  appBundlePath: string | null;
+  recommendedLaunchCommand: string | null;
+  translocationFixCommands: string[];
+};
 
 
 /**
@@ -92,6 +109,8 @@ class ErrorBoundary extends Component<
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [portableDiagnostics, setPortableDiagnostics] = useState<PortableDiagnostics | null>(null);
+  const [portableDiagnosticsLoaded, setPortableDiagnosticsLoaded] = useState(false);
   const skipSetupForE2E = typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('e2eSkipSetup') === '1';
   const initSettings = useSettingsStore((state) => state.init);
@@ -105,6 +124,21 @@ function App() {
     initSettings();
   }, [initSettings]);
 
+  useEffect(() => {
+    let cancelled = false;
+    invokeIpc<PortableDiagnostics>('app:getPortableDiagnostics')
+      .then((diagnostics) => {
+        if (!cancelled) setPortableDiagnostics(diagnostics);
+      })
+      .catch(() => {
+        if (!cancelled) setPortableDiagnostics(null);
+      })
+      .finally(() => {
+        if (!cancelled) setPortableDiagnosticsLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   // Sync i18n language with persisted settings on mount
   useEffect(() => {
     if (language && language !== i18n.language) {
@@ -114,20 +148,23 @@ function App() {
 
   // Initialize Gateway connection on mount
   useEffect(() => {
+    if (!portableDiagnosticsLoaded || portableDiagnostics?.isAppTranslocated) return;
     initGateway();
-  }, [initGateway]);
+  }, [initGateway, portableDiagnosticsLoaded, portableDiagnostics?.isAppTranslocated]);
 
   // Initialize provider snapshot on mount
   useEffect(() => {
+    if (!portableDiagnosticsLoaded || portableDiagnostics?.isAppTranslocated) return;
     initProviders();
-  }, [initProviders]);
+  }, [initProviders, portableDiagnosticsLoaded, portableDiagnostics?.isAppTranslocated]);
 
   // Redirect to setup wizard if not complete
   useEffect(() => {
+    if (portableDiagnostics?.isAppTranslocated) return;
     if (!setupComplete && !skipSetupForE2E && !location.pathname.startsWith('/setup')) {
       navigate('/setup');
     }
-  }, [setupComplete, skipSetupForE2E, location.pathname, navigate]);
+  }, [setupComplete, skipSetupForE2E, location.pathname, navigate, portableDiagnostics?.isAppTranslocated]);
 
   // Listen for navigation events from main process
   useEffect(() => {
@@ -176,6 +213,17 @@ function App() {
 
   const extraRoutes = rendererExtensionRegistry.getExtraRoutes();
 
+  if (portableDiagnostics?.isAppTranslocated) {
+    return (
+      <ErrorBoundary>
+        <TooltipProvider delayDuration={300}>
+          <PortableTranslocationBlocker diagnostics={portableDiagnostics} />
+          <Toaster position="bottom-right" richColors closeButton style={{ zIndex: 99999 }} />
+        </TooltipProvider>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <TooltipProvider delayDuration={300}>
@@ -207,6 +255,61 @@ function App() {
         />
       </TooltipProvider>
     </ErrorBoundary>
+  );
+}
+
+function PortableTranslocationBlocker({ diagnostics }: { diagnostics: PortableDiagnostics }) {
+  const commands = diagnostics.translocationFixCommands.join('\n');
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(commands);
+  };
+
+  return (
+    <div data-testid="portable-translocation-blocker" className="flex h-screen flex-col bg-background text-foreground">
+      <TitleBar />
+      <main className="flex-1 overflow-auto">
+        <div className="mx-auto max-w-3xl px-8 py-12">
+          <div className="flex items-start gap-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-6">
+            <AlertTriangle className="h-6 w-6 flex-shrink-0 text-red-500" />
+            <div className="space-y-4">
+              <div>
+                <h1 className="text-2xl font-semibold">macOS App Translocation detected</h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  UClaw is running from a temporary macOS translocation path. Startup has been blocked to avoid writing portable data or OpenClaw resources to the wrong location.
+                </p>
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <p className="font-medium">Current executable path</p>
+                <p className="break-all rounded-lg bg-background/70 p-3 font-mono text-xs text-muted-foreground">
+                  {diagnostics.exePath}
+                </p>
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <p className="font-medium">Run these commands from Terminal, then launch UClaw from the APFS launcher.</p>
+                <pre className="max-h-72 overflow-auto rounded-lg bg-background/70 p-3 text-xs font-mono whitespace-pre-wrap break-words">
+                  {commands}
+                </pre>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" onClick={handleCopy}>
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy commands
+                </Button>
+                {diagnostics.recommendedLaunchCommand && (
+                  <div className="flex items-center rounded-lg bg-background/70 px-3 py-2 font-mono text-xs text-muted-foreground">
+                    {diagnostics.recommendedLaunchCommand}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }
 

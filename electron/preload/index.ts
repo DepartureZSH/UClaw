@@ -142,7 +142,9 @@ const electronAPI = {
         'openclaw:syncModelPricing',
         'app:isPortable',
         'app:portableRoot',
+        'app:getPortableDiagnostics',
         'app:getWorkspaceDir',
+        'app:workspaceHasOpenClawConfig',
         'app:selectWorkspaceDir',
         'app:applyWorkspaceDir',
       ];

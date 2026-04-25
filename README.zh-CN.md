@@ -168,11 +168,13 @@ pnpm dev
 首次启动 ClawX 时，**设置向导** 将引导你完成以下步骤：
 
 1. **语言与区域** – 配置你的首选语言和地区
-2. **AI 供应商** – 通过 API 密钥或 OAuth（支持浏览器/设备登录的供应商）添加账号
-3. **技能包** – 选择适用于常见场景的预配置技能
-4. **验证** – 在进入主界面前测试你的配置
+2. **工作目录** – 选择 OpenClaw 数据的存储位置
+3. **环境检查** – 验证内置运行时与 Gateway
+4. **AI 配置** – 在需要时配置默认 New API 接口和模型
+5. **必要组件** – 安装默认本地工具
 
 如果系统语言在支持列表中，向导会默认选中该语言；否则回退到英文。
+如果所选工作目录已包含 `.openclaw/openclaw.json`，向导会沿用现有 OpenClaw 配置，并跳过 AI Key 输入步骤。
 
 > Moonshot（Kimi）说明：ClawX 默认保持开启 Kimi 的 web search。  
 > 当配置 Moonshot 后，ClawX 也会将 OpenClaw 配置中的 Kimi web search 同步到中国区端点（`https://api.moonshot.cn/v1`）。
@@ -355,9 +357,12 @@ pnpm package              # 为当前平台打包（包含预装技能资源）
 pnpm package:mac          # 为 macOS 打包
 pnpm package:win          # 为 Windows 打包
 pnpm package:linux        # 为 Linux 打包
+pnpm run package:portable:dual  # 构建推荐的双分区便携版布局
 ```
 
 在无头 Linux 环境下，Electron 测试需要显示服务；可使用 `xvfb-run -a pnpm run test:e2e`。
+
+制作 U 盘/移动硬盘便携版时，推荐使用 [`docs/portable-usb.md`](docs/portable-usb.md) 中的双分区布局：macOS `.app` 放在 APFS，Windows/Linux 程序和共享 UClaw data/workspace 放在 ExFAT。如果 macOS 提示 App Translocation，请参考 [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md)。
 
 ### 通信回归检查
 

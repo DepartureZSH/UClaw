@@ -84,6 +84,7 @@ const UNIFIED_CHANNELS = new Set<string>([
   'usage:recentTokenHistory',
   'app:isPortable',
   'app:portableRoot',
+  'app:getPortableDiagnostics',
 ]);
 
 const customInvokers = new Map<Exclude<TransportKind, 'ipc'>, TransportInvoker>();

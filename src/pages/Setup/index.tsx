@@ -85,6 +85,8 @@ export function Setup() {
   const [runtimeChecksPassed, setRuntimeChecksPassed] = useState(false);
   const [aiConfigSaved, setAiConfigSaved] = useState(false);
   const [workspaceDir, setWorkspaceDir] = useState('');
+  const [workspaceHasExistingConfig, setWorkspaceHasExistingConfig] = useState(false);
+  const [checkingWorkspaceConfig, setCheckingWorkspaceConfig] = useState(false);
 
   const markSetupComplete = useSettingsStore((state) => state.markSetupComplete);
 
@@ -106,9 +108,36 @@ export function Setup() {
     }
   }, [safeStepIndex, runtimeChecksPassed]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const checkWorkspaceConfig = async () => {
+      if (!workspaceDir) {
+        setWorkspaceHasExistingConfig(false);
+        setCheckingWorkspaceConfig(false);
+        return;
+      }
+      setCheckingWorkspaceConfig(true);
+      try {
+        const hasConfig = await invokeIpc<boolean>('app:workspaceHasOpenClawConfig', workspaceDir);
+        if (!cancelled) setWorkspaceHasExistingConfig(Boolean(hasConfig));
+      } catch {
+        if (!cancelled) setWorkspaceHasExistingConfig(false);
+      } finally {
+        if (!cancelled) setCheckingWorkspaceConfig(false);
+      }
+    };
+    void checkWorkspaceConfig();
+    return () => { cancelled = true; };
+  }, [workspaceDir]);
+
   const handleNext = async () => {
     if (safeStepIndex === STEP.WORKSPACE) {
-      await invokeIpc('app:applyWorkspaceDir', workspaceDir);
+      const result = await invokeIpc<{ success?: boolean; hasOpenClawConfig?: boolean }>('app:applyWorkspaceDir', workspaceDir);
+      setWorkspaceHasExistingConfig(Boolean(result?.hasOpenClawConfig));
+    }
+    if (safeStepIndex === STEP.RUNTIME && workspaceHasExistingConfig) {
+      setCurrentStep(STEP.INSTALLING);
+      return;
     }
     if (isLastStep) {
       markSetupComplete();
@@ -193,7 +222,14 @@ export function Setup() {
             {/* Step-specific content */}
             <div className="rounded-xl bg-card text-card-foreground border shadow-sm p-8 mb-8">
               {safeStepIndex === STEP.WELCOME    && <WelcomeContent />}
-              {safeStepIndex === STEP.WORKSPACE  && <WorkspaceContent value={workspaceDir} onChange={setWorkspaceDir} />}
+              {safeStepIndex === STEP.WORKSPACE  && (
+                <WorkspaceContent
+                  value={workspaceDir}
+                  hasExistingConfig={workspaceHasExistingConfig}
+                  checkingConfig={checkingWorkspaceConfig}
+                  onChange={setWorkspaceDir}
+                />
+              )}
               {safeStepIndex === STEP.RUNTIME    && <RuntimeContent onStatusChange={setRuntimeChecksPassed} />}
               {safeStepIndex === STEP.AI_CONFIG  && <PortableConfigContent onSaved={() => setAiConfigSaved(true)} />}
               {safeStepIndex === STEP.INSTALLING && <InstallingContent skills={getDefaultSkills(t)} onComplete={handleInstallationComplete} onSkip={() => setCurrentStep((i) => i + 1)} />}
@@ -307,10 +343,12 @@ function WelcomeContent() {
 
 interface WorkspaceContentProps {
   value: string;
+  hasExistingConfig: boolean;
+  checkingConfig: boolean;
   onChange: (dir: string) => void;
 }
 
-function WorkspaceContent({ value, onChange }: WorkspaceContentProps) {
+function WorkspaceContent({ value, hasExistingConfig, checkingConfig, onChange }: WorkspaceContentProps) {
   const [selecting, setSelecting] = useState(false);
 
   const handleSelect = async () => {
@@ -341,7 +379,7 @@ function WorkspaceContent({ value, onChange }: WorkspaceContentProps) {
           <div className="flex-1 flex items-center h-10 rounded-md border border-input bg-muted/50 px-3 text-sm font-mono text-muted-foreground truncate">
             {value || '未选择（使用默认 ~/.openclaw）'}
           </div>
-          <Button variant="outline" onClick={handleSelect} disabled={selecting}>
+          <Button data-testid="setup-workspace-select-button" variant="outline" onClick={handleSelect} disabled={selecting}>
             {selecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderOpen className="h-4 w-4" />}
           </Button>
         </div>
@@ -358,8 +396,19 @@ function WorkspaceContent({ value, onChange }: WorkspaceContentProps) {
 
       {value && (
         <div className="p-3 rounded-lg bg-muted border border-border text-sm text-foreground flex items-start gap-2">
-          <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0 text-green-500" />
-          <span>数据将存储在 <span className="font-mono text-xs break-all text-muted-foreground">{previewPath}</span></span>
+          {checkingConfig ? (
+            <Loader2 className="h-4 w-4 mt-0.5 flex-shrink-0 animate-spin text-muted-foreground" />
+          ) : (
+            <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0 text-green-500" />
+          )}
+          <span>
+            数据将存储在 <span className="font-mono text-xs break-all text-muted-foreground">{previewPath}</span>
+            {hasExistingConfig && (
+              <span data-testid="setup-workspace-existing-config" className="block mt-1 text-xs text-green-500">
+                已检测到 openclaw.json，后续将沿用现有 AI 配置。
+              </span>
+            )}
+          </span>
         </div>
       )}
     </div>

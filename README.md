@@ -168,11 +168,13 @@ pnpm dev
 When you launch ClawX for the first time, the **Setup Wizard** will guide you through:
 
 1. **Language & Region** – Configure your preferred locale
-2. **AI Provider** – Add providers with API keys or OAuth (for providers that support browser/device login)
-3. **Skill Bundles** – Select pre-configured skills for common use cases
-4. **Verification** – Test your configuration before entering the main interface
+2. **Workspace** – Choose where OpenClaw data should be stored
+3. **Environment Check** – Verify the bundled runtime and Gateway
+4. **AI Configuration** – Configure the default New API endpoint and model when needed
+5. **Essential Components** – Install the default local tools
 
 The wizard preselects your system language when it is supported, and falls back to English otherwise.
+If the selected workspace already contains `.openclaw/openclaw.json`, the wizard reuses that OpenClaw configuration and skips the AI key entry step.
 
 > Note for Moonshot (Kimi): ClawX keeps Kimi web search enabled by default.  
 > When Moonshot is configured, ClawX also syncs Kimi web search to the China endpoint (`https://api.moonshot.cn/v1`) in OpenClaw config.
@@ -355,9 +357,12 @@ pnpm package              # Package for current platform (includes bundled prein
 pnpm package:mac          # Package for macOS
 pnpm package:win          # Package for Windows
 pnpm package:linux        # Package for Linux
+pnpm run package:portable:dual  # Build the recommended dual-partition portable layout
 ```
 
 On headless Linux, run Electron tests under a display server such as `xvfb-run -a pnpm run test:e2e`.
+
+For portable USB/hard-drive builds, prefer the dual-partition layout documented in [`docs/portable-usb.md`](docs/portable-usb.md). macOS `.app` bundles should live on APFS, while Windows/Linux builds and shared UClaw data/workspace can live on ExFAT. If macOS reports App Translocation, see [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md).
 
 ### Communication Regression Checks
 

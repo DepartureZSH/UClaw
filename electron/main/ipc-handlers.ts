@@ -23,6 +23,7 @@ import {
 } from '../utils/openclaw-auth';
 import { syncProxyConfigToOpenClaw } from '../utils/openclaw-proxy';
 import { buildOpenClawControlUiUrl } from '../utils/openclaw-control-ui';
+import { buildPortableDiagnostics } from '../utils/portable-diagnostics';
 import { logger } from '../utils/logger';
 import { resolveAgentIdFromChannel } from '../utils/agent-config';
 import { resolveAccountIdFromSessionHistory } from '../utils/session-util';
@@ -169,6 +170,16 @@ function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {
           if (request.action === 'version') data = app.getVersion();
           else if (request.action === 'name') data = app.getName();
           else if (request.action === 'platform') data = process.platform;
+          else if (request.action === 'getPortableDiagnostics') {
+            data = buildPortableDiagnostics({
+              platform: process.platform,
+              exePath: app.getPath('exe'),
+              appPath: app.getAppPath(),
+              userDataDir: app.getPath('userData'),
+              portableRoot: process.env.UCLAW_PORTABLE_ROOT ?? null,
+              workspaceDir: process.env.UCLAW_WORKSPACE_DIR ?? null,
+            });
+          }
           else {
             return {
               id: request.id,
@@ -2205,7 +2216,24 @@ function registerAppHandlers(): void {
   ipcMain.handle('app:isPortable', () => !!process.env.UCLAW_PORTABLE_ROOT);
   ipcMain.handle('app:portableRoot', () => process.env.UCLAW_PORTABLE_ROOT ?? null);
 
+  ipcMain.handle('app:getPortableDiagnostics', () => buildPortableDiagnostics({
+    platform: process.platform,
+    exePath: app.getPath('exe'),
+    appPath: app.getAppPath(),
+    userDataDir: app.getPath('userData'),
+    portableRoot: process.env.UCLAW_PORTABLE_ROOT ?? null,
+    workspaceDir: process.env.UCLAW_WORKSPACE_DIR ?? null,
+  }));
+
   ipcMain.handle('app:getWorkspaceDir', () => process.env.UCLAW_WORKSPACE_DIR ?? '');
+
+  ipcMain.handle('app:workspaceHasOpenClawConfig', async (_, dir: string) => {
+    const workspaceDir = typeof dir === 'string' ? dir.trim() : '';
+    const configPath = workspaceDir
+      ? join(workspaceDir, '.openclaw', 'openclaw.json')
+      : join(getOpenClawConfigDir(), 'openclaw.json');
+    return existsSync(configPath);
+  });
 
   ipcMain.handle('app:selectWorkspaceDir', async () => {
     const result = await dialog.showOpenDialog({
@@ -2224,6 +2252,10 @@ function registerAppHandlers(): void {
     } else {
       delete process.env.UCLAW_WORKSPACE_DIR;
     }
+    return {
+      success: true,
+      hasOpenClawConfig: existsSync(join(getOpenClawConfigDir(), 'openclaw.json')),
+    };
   });
 }
 

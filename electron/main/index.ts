@@ -48,6 +48,7 @@ import { deviceOAuthManager } from '../utils/device-oauth';
 import { browserOAuthManager } from '../utils/browser-oauth';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
 import { syncAllProviderAuthToRuntime } from '../services/providers/provider-runtime-sync';
+import { buildPortableDiagnostics } from '../utils/portable-diagnostics';
 
 // On Windows, set console output code page to UTF-8 (65001) early so that
 // CJK characters in gateway stderr logs are not garbled when displayed in
@@ -360,9 +361,21 @@ async function initialize(): Promise<void> {
     `Runtime: platform=${process.platform}/${process.arch}, electron=${process.versions.electron}, node=${process.versions.node}, packaged=${app.isPackaged}, pid=${process.pid}, ppid=${process.ppid}`
   );
 
+  const portableDiagnostics = buildPortableDiagnostics({
+    platform: process.platform,
+    exePath: app.getPath('exe'),
+    appPath: app.getAppPath(),
+    userDataDir: app.getPath('userData'),
+    portableRoot: process.env.UCLAW_PORTABLE_ROOT ?? null,
+    workspaceDir: process.env.UCLAW_WORKSPACE_DIR ?? null,
+  });
+  if (portableDiagnostics.isAppTranslocated) {
+    logger.warn(`[portable] AppTranslocation detected at ${portableDiagnostics.exePath}; startup side effects will be skipped.`);
+  }
+
   // Apply custom workspace dir before gateway starts.
   // UCLAW_WORKSPACE_DIR takes priority over UCLAW_PORTABLE_ROOT (see paths.ts).
-  if (!isE2EMode) {
+  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
     const workspaceDir = await getSetting('workspaceDir');
     if (workspaceDir) {
       process.env.UCLAW_WORKSPACE_DIR = workspaceDir;
@@ -370,7 +383,7 @@ async function initialize(): Promise<void> {
     }
   }
 
-  if (!isE2EMode) {
+  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
     // Warm up network optimization (non-blocking)
     void warmupNetworkOptimization();
 
@@ -380,6 +393,8 @@ async function initialize(): Promise<void> {
     // Apply persisted proxy settings before creating windows or network requests.
     await applyProxySettings();
     await syncLaunchAtStartupSettingFromStore();
+  } else if (portableDiagnostics.isAppTranslocated) {
+    logger.warn('Startup side effects minimized because macOS AppTranslocation is active');
   } else {
     logger.info('Running in E2E mode: startup side effects minimized');
   }
@@ -391,7 +406,7 @@ async function initialize(): Promise<void> {
   const window = createMainWindow();
 
   // Create system tray
-  if (!isE2EMode) {
+  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
     createTray(window);
   }
 
@@ -420,6 +435,11 @@ async function initialize(): Promise<void> {
 
   // Register IPC handlers
   registerIpcHandlers(gatewayManager, clawHubService, window);
+
+  if (portableDiagnostics.isAppTranslocated) {
+    logger.warn('Initialization stopped before Host API, extensions, and Gateway startup because macOS AppTranslocation is active');
+    return;
+  }
 
   hostApiServer = startHostApiServer({
     gatewayManager,
@@ -450,7 +470,7 @@ async function initialize(): Promise<void> {
   // Repair any bootstrap files that only contain UClaw markers (no OpenClaw
   // template content). This fixes a race condition where ensureUClawContext()
   // previously created the file before the gateway could seed the full template.
-  if (!isE2EMode) {
+  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
     void repairUClawOnlyBootstrapFiles().catch((error) => {
       logger.warn('Failed to repair bootstrap files:', error);
     });
@@ -458,7 +478,7 @@ async function initialize(): Promise<void> {
 
   // Pre-deploy built-in skills (feishu-doc, feishu-drive, feishu-perm, feishu-wiki)
   // to ~/.openclaw/skills/ so they are immediately available without manual install.
-  if (!isE2EMode) {
+  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
     void ensureBuiltinSkillsInstalled().catch((error) => {
       logger.warn('Failed to install built-in skills:', error);
     });
@@ -467,7 +487,7 @@ async function initialize(): Promise<void> {
   // Pre-deploy bundled third-party skills from resources/preinstalled-skills.
   // This installs full skill directories (not only SKILL.md) in an idempotent,
   // non-destructive way and never blocks startup.
-  if (!isE2EMode) {
+  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
     void ensurePreinstalledSkillsInstalled().catch((error) => {
       logger.warn('Failed to install preinstalled skills:', error);
     });
@@ -476,7 +496,7 @@ async function initialize(): Promise<void> {
   // Pre-deploy/upgrade bundled OpenClaw plugins (dingtalk, wecom, feishu, wechat)
   // to ~/.openclaw/extensions/ so they are always up-to-date after an app update.
   // Note: qqbot was moved to a built-in channel in OpenClaw 3.31.
-  if (!isE2EMode) {
+  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
     void ensureAllBundledPluginsInstalled().catch((error) => {
       logger.warn('Failed to install/upgrade bundled plugins:', error);
     });
@@ -486,7 +506,7 @@ async function initialize(): Promise<void> {
   // renderer subscribers observe the full startup lifecycle.
   gatewayManager.on('status', (status: { state: string }) => {
     hostEventBus.emit('gateway:status', status);
-    if (status.state === 'running' && !isE2EMode) {
+    if (status.state === 'running' && !isE2EMode && !portableDiagnostics.isAppTranslocated) {
       void ensureUClawContext().catch((error) => {
         logger.warn('Failed to re-merge UClaw context after gateway reconnect:', error);
       });
@@ -559,7 +579,7 @@ async function initialize(): Promise<void> {
 
   // Start Gateway automatically (this seeds missing bootstrap files with full templates)
   const gatewayAutoStart = await getSetting('gatewayAutoStart');
-  if (!isE2EMode && gatewayAutoStart) {
+  if (!isE2EMode && gatewayAutoStart && !portableDiagnostics.isAppTranslocated) {
     try {
       await syncAllProviderAuthToRuntime();
       logger.debug('Auto-starting Gateway...');
@@ -569,6 +589,8 @@ async function initialize(): Promise<void> {
       logger.error('Gateway auto-start failed:', error);
       mainWindow?.webContents.send('gateway:error', String(error));
     }
+  } else if (portableDiagnostics.isAppTranslocated) {
+    logger.warn('Gateway auto-start skipped because macOS AppTranslocation is active');
   } else if (isE2EMode) {
     logger.info('Gateway auto-start skipped in E2E mode');
   } else {
@@ -578,14 +600,14 @@ async function initialize(): Promise<void> {
   // Merge UClaw context snippets into the workspace bootstrap files.
   // The gateway seeds workspace files asynchronously after its HTTP server
   // is ready, so ensureUClawContext will retry until the target files appear.
-  if (!isE2EMode) {
+  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
     void ensureUClawContext().catch((error) => {
       logger.warn('Failed to merge UClaw context into workspace:', error);
     });
   }
 
   // Auto-install openclaw CLI and shell completions (non-blocking).
-  if (!isE2EMode) {
+  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
     void autoInstallCliIfNeeded((installedPath) => {
       mainWindow?.webContents.send('openclaw:cli-installed', installedPath);
     }).then(() => {
