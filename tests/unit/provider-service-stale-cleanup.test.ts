@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   saveProviderAccount: vi.fn(),
   getActiveOpenClawProviders: vi.fn(),
   getOpenClawProvidersConfig: vi.fn(),
+  getOpenClawRuntimeCredentialProviders: vi.fn(),
   getOpenClawProviderKeyForType: vi.fn(),
   getAliasSourceTypes: vi.fn(),
   getProviderDefinition: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock('@electron/services/providers/provider-store', () => ({
 vi.mock('@electron/utils/openclaw-auth', () => ({
   getActiveOpenClawProviders: mocks.getActiveOpenClawProviders,
   getOpenClawProvidersConfig: mocks.getOpenClawProvidersConfig,
+  getOpenClawRuntimeCredentialProviders: mocks.getOpenClawRuntimeCredentialProviders,
 }));
 
 vi.mock('@electron/utils/provider-keys', () => ({
@@ -100,6 +102,7 @@ describe('ProviderService.listAccounts (openclaw.json as sole source of truth)',
     mocks.getAliasSourceTypes.mockReturnValue([]);
     mocks.getProviderDefinition.mockReturnValue(undefined);
     mocks.getOpenClawProvidersConfig.mockResolvedValue({ providers: {}, defaultModel: undefined });
+    mocks.getOpenClawRuntimeCredentialProviders.mockResolvedValue(new Set<string>());
     mocks.listProviderAccounts.mockResolvedValue([]);
     service = new ProviderService();
   });

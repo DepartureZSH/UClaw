@@ -28,7 +28,11 @@ import {
   setDefaultProvider,
   storeApiKey,
 } from '../../utils/secure-storage';
-import { getActiveOpenClawProviders, getOpenClawProvidersConfig } from '../../utils/openclaw-auth';
+import {
+  getActiveOpenClawProviders,
+  getOpenClawProvidersConfig,
+  getOpenClawRuntimeCredentialProviders,
+} from '../../utils/openclaw-auth';
 import { getAliasSourceTypes, getOpenClawProviderKeyForType } from '../../utils/provider-keys';
 import type { ProviderWithKeyInfo } from '../../shared/providers/types';
 import { logger } from '../../utils/logger';
@@ -278,12 +282,17 @@ export class ProviderService {
   async listLegacyProvidersWithKeyInfo(): Promise<ProviderWithKeyInfo[]> {
     logLegacyProviderApiUsage('listLegacyProvidersWithKeyInfo', 'listAccounts');
     const providers = await this.listLegacyProviders();
+    const runtimeCredentialProviders = await getOpenClawRuntimeCredentialProviders();
     const results: ProviderWithKeyInfo[] = [];
     for (const provider of providers) {
       const apiKey = await getApiKey(provider.id);
+      const runtimeProviderKey = getOpenClawProviderKeyForType(provider.type, provider.id);
+      const hasRuntimeCredential = runtimeCredentialProviders.has(runtimeProviderKey)
+        || runtimeCredentialProviders.has(provider.id)
+        || runtimeCredentialProviders.has(provider.type);
       results.push({
         ...provider,
-        hasKey: !!apiKey,
+        hasKey: !!apiKey || hasRuntimeCredential,
         keyMasked: maskApiKey(apiKey),
       });
     }

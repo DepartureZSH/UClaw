@@ -11,7 +11,6 @@
 import { access, mkdir, readFile, writeFile } from 'fs/promises';
 import { constants, readdirSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
 import { listConfiguredAgentIds } from './agent-config';
 import { getOpenClawResolvedDir, getOpenClawConfigDir } from './paths';
 import {
@@ -329,6 +328,39 @@ async function getProvidersFromAuthProfileStores(): Promise<Set<string>> {
   for (const agentId of agentIds) {
     const store = await readAuthProfiles(agentId);
     addProvidersFromProfileEntries(store.profiles, providers);
+  }
+
+  return providers;
+}
+
+export async function getOpenClawRuntimeCredentialProviders(): Promise<Set<string>> {
+  const providers = new Set<string>();
+
+  try {
+    const config = await readOpenClawJson();
+
+    const modelProviders = (config.models as Record<string, unknown> | undefined)?.providers;
+    if (modelProviders && typeof modelProviders === 'object') {
+      for (const [provider, entry] of Object.entries(modelProviders as Record<string, unknown>)) {
+        const apiKey = typeof (entry as Record<string, unknown>)?.apiKey === 'string'
+          ? ((entry as Record<string, unknown>).apiKey as string).trim()
+          : '';
+        if (apiKey) {
+          providers.add(provider);
+        }
+      }
+    }
+
+    const auth = config.auth as Record<string, unknown> | undefined;
+    addProvidersFromProfileEntries(auth?.profiles as Record<string, unknown> | undefined, providers);
+  } catch {
+    // Missing or malformed openclaw.json should not hide credentials held in
+    // per-agent auth-profile stores.
+  }
+
+  const authProfileProviders = await getProvidersFromAuthProfileStores();
+  for (const provider of authProfileProviders) {
+    providers.add(provider);
   }
 
   return providers;
