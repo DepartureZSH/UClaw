@@ -31,6 +31,7 @@ import {
 import {
   getActiveOpenClawProviders,
   getOpenClawProvidersConfig,
+  getOpenClawRuntimeApiKey,
   getOpenClawRuntimeCredentialProviders,
 } from '../../utils/openclaw-auth';
 import { getAliasSourceTypes, getOpenClawProviderKeyForType } from '../../utils/provider-keys';
@@ -55,6 +56,28 @@ function logLegacyProviderApiUsage(method: string, replacement: string): void {
   logger.warn(
     `[provider-migration] Legacy provider API "${method}" is deprecated. Migrate to "${replacement}".`,
   );
+}
+
+async function importRuntimeApiKeyIfMissing(
+  account: ProviderAccount,
+  runtimeProviderKey: string,
+): Promise<void> {
+  const existingKey = await getApiKey(account.id);
+  if (existingKey) {
+    return;
+  }
+
+  const runtimeKey = await getOpenClawRuntimeApiKey([
+    runtimeProviderKey,
+    account.id,
+    account.vendorId,
+  ]);
+  if (!runtimeKey) {
+    return;
+  }
+
+  await storeApiKey(account.id, runtimeKey);
+  logger.info(`[provider-sync] Imported runtime API key for account "${account.id}"`);
 }
 
 export class ProviderService {
@@ -105,10 +128,11 @@ export class ProviderService {
         const aliasAccounts = storeGroup.filter((a) => a.vendorId !== key);
         const candidates = aliasAccounts.length > 0 ? aliasAccounts : storeGroup;
         candidates.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-        result.push(candidates[0]);
+        const kept = candidates[0];
+        await importRuntimeApiKeyIfMissing(kept, key);
+        result.push(kept);
 
         // Clean up orphaned duplicates from the store.
-        const kept = candidates[0];
         for (const account of storeGroup) {
           if (account.id !== kept.id) {
             logger.info(
@@ -129,6 +153,7 @@ export class ProviderService {
           );
           for (const account of seeded) {
             await saveProviderAccount(account);
+            await importRuntimeApiKeyIfMissing(account, key);
             result.push(account);
             logger.info(`[provider-sync] Seeded provider account "${account.id}" from openclaw.json`);
           }

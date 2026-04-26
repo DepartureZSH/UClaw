@@ -24,8 +24,13 @@ import { providerAccountToConfig } from '../../services/providers/provider-store
 import type { ProviderAccount } from '../../shared/providers/types';
 import { logger } from '../../utils/logger';
 import { proxyAwareFetch } from '../../utils/proxy-fetch';
-import { patchProviderModelCosts } from '../../utils/openclaw-auth';
+import {
+  getOpenClawRuntimeApiKey,
+  getOpenClawRuntimeModelIds,
+  patchProviderModelCosts,
+} from '../../utils/openclaw-auth';
 import { parsePricingResponse } from '../../utils/new-api-pricing';
+import { getOpenClawProviderKeyForType } from '../../utils/provider-keys';
 
 const legacyProviderRoutesWarned = new Set<string>();
 
@@ -144,6 +149,33 @@ export async function handleProviderRoutes(
     return { models, pricing };
   }
 
+  function normalizeConfiguredModelId(model: string | undefined, providerKeys: string[]): string | undefined {
+    const trimmed = model?.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    for (const providerKey of providerKeys) {
+      const prefix = `${providerKey}/`;
+      if (trimmed.startsWith(prefix)) {
+        return trimmed.slice(prefix.length);
+      }
+    }
+    return trimmed;
+  }
+
+  function mergeModelIds(...groups: Array<Array<string | undefined>>): string[] {
+    const models: string[] = [];
+    for (const group of groups) {
+      for (const model of group) {
+        const trimmed = model?.trim();
+        if (trimmed && !models.includes(trimmed)) {
+          models.push(trimmed);
+        }
+      }
+    }
+    return models;
+  }
+
   // POST /api/fetch-models — proxy for renderer: no CORS, accepts {baseUrl, apiKey} in body.
   if (url.pathname === '/api/fetch-models' && req.method === 'POST') {
     try {
@@ -170,14 +202,32 @@ export async function handleProviderRoutes(
         sendJson(res, 404, { success: false, error: 'Account not found' });
         return true;
       }
-      const apiKey = await getApiKey(accountId);
+      const runtimeProviderKey = getOpenClawProviderKeyForType(account.vendorId, account.id);
+      const providerCandidates = [runtimeProviderKey, account.id, account.vendorId];
+      const apiKey = await getApiKey(accountId)
+        || await getOpenClawRuntimeApiKey(providerCandidates);
       if (!apiKey) {
         sendJson(res, 400, { success: false, error: 'No API key stored for this account' });
         return true;
       }
       const baseUrl = (account.baseUrl || 'https://chatbot.cn.unreachablecity.club/v1').replace(/\/$/, '');
       const pricingBase = typeof account.metadata?.pricingBase === 'number' ? account.metadata.pricingBase : undefined;
-      const result = await fetchModelsWithPricing(baseUrl, apiKey, pricingBase);
+      const configuredModels = await getOpenClawRuntimeModelIds(providerCandidates);
+      const accountModels = mergeModelIds([
+        normalizeConfiguredModelId(account.model, providerCandidates),
+        ...((account.fallbackModels ?? []).map((model) => normalizeConfiguredModelId(model, providerCandidates))),
+      ]);
+      let result: Awaited<ReturnType<typeof fetchModelsWithPricing>>;
+      try {
+        result = await fetchModelsWithPricing(baseUrl, apiKey, pricingBase);
+      } catch (error) {
+        const fallbackModels = mergeModelIds(configuredModels, accountModels);
+        if (fallbackModels.length === 0) {
+          throw error;
+        }
+        result = { models: fallbackModels, pricing: {} };
+      }
+      result.models = mergeModelIds(result.models, configuredModels, accountModels);
       sendJson(res, 200, { success: true, ...result });
     } catch (error) {
       sendJson(res, 500, { success: false, error: String(error) });

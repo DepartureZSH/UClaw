@@ -7,10 +7,13 @@ const mocks = vi.hoisted(() => ({
   saveProviderAccount: vi.fn(),
   getActiveOpenClawProviders: vi.fn(),
   getOpenClawProvidersConfig: vi.fn(),
+  getOpenClawRuntimeApiKey: vi.fn(),
   getOpenClawRuntimeCredentialProviders: vi.fn(),
   getOpenClawProviderKeyForType: vi.fn(),
   getAliasSourceTypes: vi.fn(),
   getProviderDefinition: vi.fn(),
+  getApiKey: vi.fn(),
+  storeApiKey: vi.fn(),
   loggerWarn: vi.fn(),
   loggerInfo: vi.fn(),
 }));
@@ -33,6 +36,7 @@ vi.mock('@electron/services/providers/provider-store', () => ({
 vi.mock('@electron/utils/openclaw-auth', () => ({
   getActiveOpenClawProviders: mocks.getActiveOpenClawProviders,
   getOpenClawProvidersConfig: mocks.getOpenClawProvidersConfig,
+  getOpenClawRuntimeApiKey: mocks.getOpenClawRuntimeApiKey,
   getOpenClawRuntimeCredentialProviders: mocks.getOpenClawRuntimeCredentialProviders,
 }));
 
@@ -44,11 +48,11 @@ vi.mock('@electron/utils/provider-keys', () => ({
 vi.mock('@electron/utils/secure-storage', () => ({
   deleteApiKey: vi.fn(),
   deleteProvider: vi.fn(),
-  getApiKey: vi.fn(),
+  getApiKey: mocks.getApiKey,
   hasApiKey: vi.fn(),
   saveProvider: vi.fn(),
   setDefaultProvider: vi.fn(),
-  storeApiKey: vi.fn(),
+  storeApiKey: mocks.storeApiKey,
 }));
 
 vi.mock('@electron/utils/logger', () => ({
@@ -102,7 +106,10 @@ describe('ProviderService.listAccounts (openclaw.json as sole source of truth)',
     mocks.getAliasSourceTypes.mockReturnValue([]);
     mocks.getProviderDefinition.mockReturnValue(undefined);
     mocks.getOpenClawProvidersConfig.mockResolvedValue({ providers: {}, defaultModel: undefined });
+    mocks.getOpenClawRuntimeApiKey.mockResolvedValue(null);
     mocks.getOpenClawRuntimeCredentialProviders.mockResolvedValue(new Set<string>());
+    mocks.getApiKey.mockResolvedValue(null);
+    mocks.storeApiKey.mockResolvedValue(true);
     mocks.listProviderAccounts.mockResolvedValue([]);
     service = new ProviderService();
   });
@@ -347,5 +354,44 @@ describe('ProviderService.listAccounts (openclaw.json as sole source of truth)',
         model: 'claude-opus-4-6',
       }),
     ]));
+  });
+
+  it('imports runtime API keys into secure storage for seeded accounts', async () => {
+    mocks.listProviderAccounts.mockResolvedValue([]);
+    mocks.getActiveOpenClawProviders.mockResolvedValue(new Set(['new-api']));
+    mocks.getOpenClawProvidersConfig.mockResolvedValue({
+      providers: { 'new-api': { baseUrl: 'https://example.test/v1' } },
+      defaultModel: undefined,
+    });
+    mocks.getOpenClawRuntimeApiKey.mockResolvedValue('sk-runtime');
+
+    const result = await service.listAccounts();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('new-api');
+    expect(mocks.storeApiKey).toHaveBeenCalledWith('new-api', 'sk-runtime');
+  });
+
+  it('imports runtime API keys into secure storage for existing matched accounts', async () => {
+    mocks.listProviderAccounts.mockResolvedValue([
+      makeAccount({ id: 'openrouter-uuid', vendorId: 'openrouter' as ProviderAccount['vendorId'] }),
+    ]);
+    mocks.getActiveOpenClawProviders.mockResolvedValue(new Set(['openrouter']));
+    mocks.getOpenClawProvidersConfig.mockResolvedValue({
+      providers: { openrouter: { baseUrl: 'https://openrouter.ai/api/v1' } },
+      defaultModel: undefined,
+    });
+    mocks.getOpenClawRuntimeApiKey.mockResolvedValue('sk-openrouter');
+
+    const result = await service.listAccounts();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('openrouter-uuid');
+    expect(mocks.getOpenClawRuntimeApiKey).toHaveBeenCalledWith([
+      'openrouter',
+      'openrouter-uuid',
+      'openrouter',
+    ]);
+    expect(mocks.storeApiKey).toHaveBeenCalledWith('openrouter-uuid', 'sk-openrouter');
   });
 });

@@ -321,6 +321,75 @@ function addProvidersFromProfileEntries(
   }
 }
 
+function authProfileMatchesCandidates(
+  profile: unknown,
+  candidates: Set<string>,
+): profile is AuthProfileEntry {
+  const entry = profile as Record<string, unknown>;
+  if (entry?.type !== 'api_key' || typeof entry.key !== 'string' || !entry.key.trim()) {
+    return false;
+  }
+  const provider = typeof entry.provider === 'string' ? entry.provider : undefined;
+  return Boolean(provider && (
+    candidates.has(provider) || candidates.has(normalizeAuthProfileProviderKey(provider))
+  ));
+}
+
+function providerKeyMatchesCandidates(provider: string, candidates: Set<string>): boolean {
+  return candidates.has(provider) || candidates.has(normalizeAuthProfileProviderKey(provider));
+}
+
+function readApiKeyProfileById(
+  profiles: Record<string, AuthProfileEntry | OAuthProfileEntry>,
+  profileId: string | undefined,
+  candidates: Set<string>,
+): string | null {
+  if (!profileId) {
+    return null;
+  }
+  const profile = profiles[profileId];
+  return authProfileMatchesCandidates(profile, candidates) ? profile.key.trim() : null;
+}
+
+function readApiKeyFromAuthProfiles(
+  store: Pick<AuthProfilesStore, 'profiles' | 'order' | 'lastGood'> | undefined,
+  candidates: Set<string>,
+): string | null {
+  if (!store?.profiles || typeof store.profiles !== 'object') {
+    return null;
+  }
+
+  for (const [provider, profileId] of Object.entries(store.lastGood ?? {})) {
+    if (!providerKeyMatchesCandidates(provider, candidates)) {
+      continue;
+    }
+    const apiKey = readApiKeyProfileById(store.profiles, profileId, candidates);
+    if (apiKey) {
+      return apiKey;
+    }
+  }
+
+  for (const [provider, profileIds] of Object.entries(store.order ?? {})) {
+    if (!providerKeyMatchesCandidates(provider, candidates)) {
+      continue;
+    }
+    for (const profileId of profileIds) {
+      const apiKey = readApiKeyProfileById(store.profiles, profileId, candidates);
+      if (apiKey) {
+        return apiKey;
+      }
+    }
+  }
+
+  for (const profile of Object.values(store.profiles)) {
+    if (authProfileMatchesCandidates(profile, candidates)) {
+      return profile.key.trim();
+    }
+  }
+
+  return null;
+}
+
 async function getProvidersFromAuthProfileStores(): Promise<Set<string>> {
   const providers = new Set<string>();
   const agentIds = await discoverAgentIds();
@@ -331,6 +400,27 @@ async function getProvidersFromAuthProfileStores(): Promise<Set<string>> {
   }
 
   return providers;
+}
+
+function resolveApiKeyReference(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const envValue = process.env[trimmed]?.trim();
+  if (envValue) {
+    return envValue;
+  }
+
+  if (/^[A-Z][A-Z0-9_]*$/.test(trimmed)) {
+    return null;
+  }
+
+  return trimmed;
 }
 
 export async function getOpenClawRuntimeCredentialProviders(): Promise<Set<string>> {
@@ -364,6 +454,87 @@ export async function getOpenClawRuntimeCredentialProviders(): Promise<Set<strin
   }
 
   return providers;
+}
+
+export async function getOpenClawRuntimeApiKey(providerCandidates: string[]): Promise<string | null> {
+  const candidates = new Set(providerCandidates.map((provider) => provider.trim()).filter(Boolean));
+  if (candidates.size === 0) {
+    return null;
+  }
+
+  try {
+    const config = await readOpenClawJson();
+
+    const auth = config.auth as Record<string, unknown> | undefined;
+    const inlineAuthKey = readApiKeyFromAuthProfiles(
+      {
+        profiles: (auth?.profiles as Record<string, AuthProfileEntry | OAuthProfileEntry> | undefined) ?? {},
+      },
+      candidates,
+    );
+    if (inlineAuthKey) {
+      return inlineAuthKey;
+    }
+
+    const modelProviders = (config.models as Record<string, unknown> | undefined)?.providers;
+    if (modelProviders && typeof modelProviders === 'object') {
+      for (const provider of candidates) {
+        const entry = (modelProviders as Record<string, unknown>)[provider];
+        if (!entry || typeof entry !== 'object') continue;
+        const apiKey = resolveApiKeyReference((entry as Record<string, unknown>).apiKey);
+        if (apiKey) {
+          return apiKey;
+        }
+      }
+    }
+  } catch {
+    // Fall through to per-agent auth-profile stores.
+  }
+
+  const agentIds = await discoverAgentIds();
+  for (const agentId of agentIds) {
+    const store = await readAuthProfiles(agentId);
+    const apiKey = readApiKeyFromAuthProfiles(store, candidates);
+    if (apiKey) {
+      return apiKey;
+    }
+  }
+
+  return null;
+}
+
+export async function getOpenClawRuntimeModelIds(providerCandidates: string[]): Promise<string[]> {
+  const candidates = new Set(providerCandidates.map((provider) => provider.trim()).filter(Boolean));
+  if (candidates.size === 0) {
+    return [];
+  }
+
+  try {
+    const config = await readOpenClawJson();
+    const modelProviders = (config.models as Record<string, unknown> | undefined)?.providers;
+    if (!modelProviders || typeof modelProviders !== 'object') {
+      return [];
+    }
+
+    const modelIds: string[] = [];
+    for (const provider of candidates) {
+      const entry = (modelProviders as Record<string, unknown>)[provider];
+      if (!entry || typeof entry !== 'object') continue;
+      const models = (entry as Record<string, unknown>).models;
+      if (!Array.isArray(models)) continue;
+      for (const model of models) {
+        const id = typeof (model as Record<string, unknown>)?.id === 'string'
+          ? ((model as Record<string, unknown>).id as string).trim()
+          : '';
+        if (id && !modelIds.includes(id)) {
+          modelIds.push(id);
+        }
+      }
+    }
+    return modelIds;
+  } catch {
+    return [];
+  }
 }
 
 async function readOpenClawJson(): Promise<Record<string, unknown>> {

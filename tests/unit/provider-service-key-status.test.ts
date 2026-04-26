@@ -7,10 +7,12 @@ const mocks = vi.hoisted(() => ({
   providerAccountToConfig: vi.fn(),
   getActiveOpenClawProviders: vi.fn(),
   getOpenClawProvidersConfig: vi.fn(),
+  getOpenClawRuntimeApiKey: vi.fn(),
   getOpenClawRuntimeCredentialProviders: vi.fn(),
   getOpenClawProviderKeyForType: vi.fn(),
   getAliasSourceTypes: vi.fn(),
   getApiKey: vi.fn(),
+  storeApiKey: vi.fn(),
 }));
 
 vi.mock('@electron/services/providers/provider-migration', () => ({
@@ -31,6 +33,7 @@ vi.mock('@electron/services/providers/provider-store', () => ({
 vi.mock('@electron/utils/openclaw-auth', () => ({
   getActiveOpenClawProviders: mocks.getActiveOpenClawProviders,
   getOpenClawProvidersConfig: mocks.getOpenClawProvidersConfig,
+  getOpenClawRuntimeApiKey: mocks.getOpenClawRuntimeApiKey,
   getOpenClawRuntimeCredentialProviders: mocks.getOpenClawRuntimeCredentialProviders,
 }));
 
@@ -45,7 +48,7 @@ vi.mock('@electron/utils/secure-storage', () => ({
   getApiKey: mocks.getApiKey,
   hasApiKey: vi.fn(),
   setDefaultProvider: vi.fn(),
-  storeApiKey: vi.fn(),
+  storeApiKey: mocks.storeApiKey,
 }));
 
 vi.mock('@electron/utils/logger', () => ({
@@ -105,7 +108,9 @@ describe('ProviderService.listLegacyProvidersWithKeyInfo', () => {
     mocks.getApiKey.mockResolvedValue(null);
     mocks.providerAccountToConfig.mockImplementation(accountToConfig);
     mocks.getOpenClawProvidersConfig.mockResolvedValue({ providers: {}, defaultModel: undefined });
+    mocks.getOpenClawRuntimeApiKey.mockResolvedValue(null);
     mocks.getOpenClawRuntimeCredentialProviders.mockResolvedValue(new Set<string>());
+    mocks.storeApiKey.mockResolvedValue(true);
     mocks.getOpenClawProviderKeyForType.mockImplementation(
       (type: string, id: string) => type === 'custom' ? id : type,
     );

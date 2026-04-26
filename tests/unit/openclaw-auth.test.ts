@@ -56,6 +56,7 @@ describe('saveProviderKeyToOpenClaw', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await rm(testHome, { recursive: true, force: true });
     await rm(testUserData, { recursive: true, force: true });
   });
@@ -127,6 +128,7 @@ describe('removeProviderKeyFromOpenClaw', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await rm(testHome, { recursive: true, force: true });
     await rm(testUserData, { recursive: true, force: true });
   });
@@ -636,6 +638,86 @@ describe('auth-backed provider discovery', () => {
       openai: {},
       anthropic: {},
     });
+  });
+
+  it('resolves runtime API keys from OpenClaw auth profile stores using lastGood first', async () => {
+    await writeOpenClawJson({
+      agents: {
+        list: [
+          { id: 'main', name: 'Main', default: true, workspace: '~/.openclaw/workspace', agentDir: '~/.openclaw/agents/main/agent' },
+          { id: 'work', name: 'Work', workspace: '~/.openclaw/workspace-work', agentDir: '~/.openclaw/agents/work/agent' },
+        ],
+      },
+    });
+
+    await writeAgentAuthProfiles('work', {
+      version: 1,
+      profiles: {
+        'openrouter:old': {
+          type: 'api_key',
+          provider: 'openrouter',
+          key: 'sk-old',
+        },
+        'openrouter:new': {
+          type: 'api_key',
+          provider: 'openrouter',
+          key: 'sk-new',
+        },
+      },
+      order: {
+        openrouter: ['openrouter:old', 'openrouter:new'],
+      },
+      lastGood: {
+        openrouter: 'openrouter:new',
+      },
+    });
+
+    const { getOpenClawRuntimeApiKey } = await import('@electron/utils/openclaw-auth');
+
+    await expect(getOpenClawRuntimeApiKey(['openrouter', 'openrouter-uuid'])).resolves.toBe('sk-new');
+  });
+
+  it('resolves runtime API keys from models.providers apiKey env references', async () => {
+    vi.stubEnv('NEW_API_KEY', 'sk-env-new-api');
+    await writeOpenClawJson({
+      models: {
+        providers: {
+          'new-api': {
+            baseUrl: 'https://example.test/v1',
+            api: 'openai-completions',
+            apiKey: 'NEW_API_KEY',
+          },
+        },
+      },
+    });
+
+    const { getOpenClawRuntimeApiKey } = await import('@electron/utils/openclaw-auth');
+
+    await expect(getOpenClawRuntimeApiKey(['new-api'])).resolves.toBe('sk-env-new-api');
+  });
+
+  it('resolves configured runtime model IDs from openclaw.json provider entries', async () => {
+    await writeOpenClawJson({
+      models: {
+        providers: {
+          'new-api': {
+            baseUrl: 'https://example.test/v1',
+            api: 'openai-completions',
+            models: [
+              { id: 'deepseek-chat', name: 'DeepSeek Chat' },
+              { id: 'kimi-k2.5', name: 'Kimi K2.5' },
+            ],
+          },
+        },
+      },
+    });
+
+    const { getOpenClawRuntimeModelIds } = await import('@electron/utils/openclaw-auth');
+
+    await expect(getOpenClawRuntimeModelIds(['new-api'])).resolves.toEqual([
+      'deepseek-chat',
+      'kimi-k2.5',
+    ]);
   });
 
   it('removes all matching auth profiles for a deleted provider so it does not reappear', async () => {
