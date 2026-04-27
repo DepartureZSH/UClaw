@@ -86,6 +86,81 @@ describe('kimi web-search API key alias resolution', () => {
     })).toBe(true);
   });
 
+  it('detects legacy kimi web search when provider is set without enabled=true', async () => {
+    const { isKimiWebSearchEnabled } = await import('@electron/gateway/config-sync');
+
+    expect(isKimiWebSearchEnabled({
+      tools: {
+        web: {
+          search: {
+            provider: 'kimi',
+          },
+        },
+      },
+    })).toBe(true);
+
+    expect(isKimiWebSearchEnabled({
+      tools: {
+        web: {
+          search: {
+            provider: 'kimi',
+            enabled: false,
+          },
+        },
+      },
+    })).toBe(false);
+  });
+
+  it('points kimi web-search plugin credentials at the KIMI_API_KEY env ref', async () => {
+    const { applyKimiWebSearchApiKeyEnvReference } = await import('@electron/gateway/config-sync');
+    const config = {
+      tools: {
+        web: {
+          search: {
+            provider: 'kimi',
+          },
+        },
+      },
+      plugins: {
+        entries: {
+          moonshot: {
+            config: {
+              webSearch: {
+                model: 'kimi-k2.5',
+                baseUrl: 'https://api.example.test/v1',
+                apiKey: 'MOONSHOT_API_KEY',
+              },
+            },
+          },
+        },
+      },
+    };
+
+    expect(applyKimiWebSearchApiKeyEnvReference(config)).toBe(true);
+    expect(config.plugins.entries.moonshot.config.webSearch.apiKey).toBe('${KIMI_API_KEY}');
+  });
+
+  it('does not overwrite an explicit kimi web-search API key', async () => {
+    const { applyKimiWebSearchApiKeyEnvReference } = await import('@electron/gateway/config-sync');
+    const config = {
+      plugins: {
+        entries: {
+          moonshot: {
+            config: {
+              webSearch: {
+                model: 'kimi-k2.5',
+                apiKey: 'sk-explicit',
+              },
+            },
+          },
+        },
+      },
+    };
+
+    expect(applyKimiWebSearchApiKeyEnvReference(config)).toBe(false);
+    expect(config.plugins.entries.moonshot.config.webSearch.apiKey).toBe('sk-explicit');
+  });
+
   it('resolves KIMI_API_KEY from the OpenClaw default model provider when providerEnv is empty', async () => {
     runtimeApiKey.mockResolvedValue('sk-custom-runtime');
     const { resolveKimiWebSearchApiKeyAlias } = await import('@electron/gateway/config-sync');

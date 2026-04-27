@@ -50,6 +50,8 @@ describe('channel credential normalization and duplicate checks', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
     vi.resetModules();
+    delete process.env.UCLAW_WORKSPACE_DIR;
+    delete process.env.UCLAW_PORTABLE_ROOT;
     await rm(testHome, { recursive: true, force: true });
     await rm(testUserData, { recursive: true, force: true });
   });
@@ -86,6 +88,22 @@ describe('channel credential normalization and duplicate checks', () => {
     const channels = config.channels as Record<string, { accounts: Record<string, { appId?: string }> }>;
     // Should trim whitespace but preserve original case
     expect(channels.feishu.accounts['agent-a'].appId).toBe('BoT-XyZ');
+  });
+
+  it('resolves openclaw.json from the current workspace env at call time', async () => {
+    const { saveChannelConfig } = await import('@electron/utils/channel-config');
+    const workspaceDir = join(testHome, 'workspace-a');
+
+    process.env.UCLAW_WORKSPACE_DIR = workspaceDir;
+    await saveChannelConfig('feishu', { appId: 'workspace-bot', appSecret: 'secret' }, 'agent-a');
+
+    const workspaceConfigPath = join(workspaceDir, '.openclaw', 'openclaw.json');
+    const homeConfigPath = join(testHome, '.openclaw', 'openclaw.json');
+    const workspaceConfig = JSON.parse(await readFile(workspaceConfigPath, 'utf8')) as Record<string, unknown>;
+
+    expect(existsSync(workspaceConfigPath)).toBe(true);
+    expect(existsSync(homeConfigPath)).toBe(false);
+    expect((workspaceConfig.channels as Record<string, { appId?: string }>).feishu.appId).toBe('workspace-bot');
   });
 
   it('emits warning logs when credential normalization (trim) occurs', async () => {

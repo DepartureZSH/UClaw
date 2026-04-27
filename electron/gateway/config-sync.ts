@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import path from 'path';
 import { existsSync, readFileSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'fs';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 
 function fsPath(filePath: string): string {
@@ -19,7 +20,7 @@ import { getApiKey, getDefaultProvider, getProvider } from '../utils/secure-stor
 import { getProviderEnvVar, getKeyableProviderTypes } from '../utils/provider-registry';
 import { getOpenClawDir, getOpenClawEntryPath, isOpenClawPresent, getOpenClawConfigDir } from '../utils/paths';
 import { getUvMirrorEnv } from '../utils/uv-env';
-import { cleanupDanglingWeChatPluginState, listConfiguredChannelsFromConfig, readOpenClawConfig } from '../utils/channel-config';
+import { cleanupDanglingWeChatPluginState, listConfiguredChannelsFromConfig } from '../utils/channel-config';
 import { sanitizeOpenClawConfig, batchSyncConfigFields, getOpenClawRuntimeApiKey } from '../utils/openclaw-auth';
 import { buildProxyEnv, resolveProxySettings } from '../utils/proxy';
 import { syncProxyConfigToOpenClaw } from '../utils/openclaw-proxy';
@@ -27,6 +28,9 @@ import { logger } from '../utils/logger';
 import { prependPathEntry } from '../utils/env-path';
 import { copyPluginFromNodeModules, fixupPluginManifest, cpSyncSafe } from '../utils/plugin-install';
 import { stripSystemdSupervisorEnv } from './config-sync-env';
+import { withConfigLock } from '../utils/config-mutex';
+import { ensureProviderStoreMigrated } from '../services/providers/provider-migration';
+import { listProviderAccounts } from '../services/providers/provider-store';
 
 
 export interface GatewayLaunchContext {
@@ -90,11 +94,35 @@ function readObject(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+const KIMI_WEB_SEARCH_API_KEY_ENV_REF = '${KIMI_API_KEY}';
+
+async function readGatewayOpenClawConfig(): Promise<Record<string, unknown>> {
+  const configPath = join(getOpenClawConfigDir(), 'openclaw.json');
+  try {
+    const raw = await readFile(configPath, 'utf-8');
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+async function writeGatewayOpenClawConfig(config: Record<string, unknown>): Promise<void> {
+  const configDir = getOpenClawConfigDir();
+  const configPath = join(configDir, 'openclaw.json');
+  await mkdir(configDir, { recursive: true });
+
+  const commands = readObject(config.commands) ?? {};
+  commands.restart = true;
+  config.commands = commands;
+
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8');
+}
+
 export function isKimiWebSearchEnabled(config: Record<string, unknown> | null | undefined): boolean {
   const tools = readObject(config?.tools);
   const web = readObject(tools?.web);
   const search = readObject(web?.search);
-  if (search?.enabled === true && search.provider === 'kimi') {
+  if (search?.provider === 'kimi' && search.enabled !== false) {
     return true;
   }
 
@@ -131,7 +159,81 @@ function getKimiWebSearchConfig(config: Record<string, unknown> | null | undefin
   const moonshot = readObject(entries?.moonshot);
   const moonshotConfig = readObject(moonshot?.config);
   const webSearch = readObject(moonshotConfig?.webSearch);
-  return webSearch ?? undefined;
+  if (webSearch) {
+    return webSearch;
+  }
+
+  const tools = readObject(config?.tools);
+  const web = readObject(tools?.web);
+  const search = readObject(web?.search);
+  const kimi = readObject(search?.kimi);
+  if (kimi) {
+    return kimi;
+  }
+  return search?.provider === 'kimi' ? search : undefined;
+}
+
+function ensureObject(target: Record<string, unknown>, key: string): Record<string, unknown> {
+  const current = readObject(target[key]);
+  if (current) return current;
+  const next: Record<string, unknown> = {};
+  target[key] = next;
+  return next;
+}
+
+function shouldReplaceKimiWebSearchApiKey(value: unknown): boolean {
+  if (value == null) {
+    return true;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return (
+      trimmed.length === 0
+      || /^[A-Z][A-Z0-9_]*$/.test(trimmed)
+      || /^\$\{[A-Z][A-Z0-9_]*\}$/.test(trimmed)
+    );
+  }
+
+  const ref = readObject(value);
+  if (ref?.source === 'env') {
+    return ref.id !== 'KIMI_API_KEY';
+  }
+
+  return false;
+}
+
+export function applyKimiWebSearchApiKeyEnvReference(config: Record<string, unknown>): boolean {
+  if (!isKimiWebSearchEnabled(config)) {
+    return false;
+  }
+
+  const plugins = ensureObject(config, 'plugins');
+  const entries = ensureObject(plugins, 'entries');
+  const moonshot = ensureObject(entries, 'moonshot');
+  if (moonshot.enabled === undefined) {
+    moonshot.enabled = true;
+  }
+  const moonshotConfig = ensureObject(moonshot, 'config');
+  const webSearch = ensureObject(moonshotConfig, 'webSearch');
+
+  if (!shouldReplaceKimiWebSearchApiKey(webSearch.apiKey)) {
+    return false;
+  }
+
+  webSearch.apiKey = KIMI_WEB_SEARCH_API_KEY_ENV_REF;
+  return true;
+}
+
+async function ensureKimiWebSearchApiKeyEnvReference(): Promise<void> {
+  await withConfigLock(async () => {
+    const config = await readGatewayOpenClawConfig();
+    if (!applyKimiWebSearchApiKeyEnvReference(config)) {
+      return;
+    }
+    await writeGatewayOpenClawConfig(config);
+    logger.info('[config-sync] Pointed kimi web-search credential at KIMI_API_KEY env reference');
+  });
 }
 
 export function getKimiWebSearchProviderCandidates(
@@ -411,7 +513,7 @@ export async function syncGatewayConfigBeforeLaunch(
   // the plugin manifest ID matches what sanitize wrote to the config.
   // Read config once and reuse for both listConfiguredChannels and plugins.allow.
   try {
-    const rawCfg = await readOpenClawConfig();
+    const rawCfg = await readGatewayOpenClawConfig();
     const configuredChannels = await listConfiguredChannelsFromConfig(rawCfg);
 
     // Also ensure plugins referenced in plugins.allow are installed even if
@@ -456,19 +558,26 @@ async function loadProviderEnv(): Promise<{ providerEnv: Record<string, string>;
   const providerTypes = getKeyableProviderTypes();
   let loadedProviderKeyCount = 0;
 
+  const setProviderEnvKey = (providerType: string | undefined, key: string | null | undefined): boolean => {
+    if (!providerType || !key) {
+      return false;
+    }
+    const envVar = getProviderEnvVar(providerType);
+    if (!envVar || providerEnv[envVar]) {
+      return false;
+    }
+    providerEnv[envVar] = key;
+    loadedProviderKeyCount++;
+    return true;
+  };
+
   try {
     const defaultProviderId = await getDefaultProvider();
     if (defaultProviderId) {
       const defaultProvider = await getProvider(defaultProviderId);
       const defaultProviderType = defaultProvider?.type;
       const defaultProviderKey = await getApiKey(defaultProviderId);
-      if (defaultProviderType && defaultProviderKey) {
-        const envVar = getProviderEnvVar(defaultProviderType);
-        if (envVar) {
-          providerEnv[envVar] = defaultProviderKey;
-          loadedProviderKeyCount++;
-        }
-      }
+      setProviderEnvKey(defaultProviderType, defaultProviderKey);
     }
   } catch (err) {
     logger.warn('Failed to load default provider key for environment injection:', err);
@@ -477,16 +586,25 @@ async function loadProviderEnv(): Promise<{ providerEnv: Record<string, string>;
   for (const providerType of providerTypes) {
     try {
       const key = await getApiKey(providerType);
-      if (key) {
-        const envVar = getProviderEnvVar(providerType);
-        if (envVar) {
-          providerEnv[envVar] = key;
-          loadedProviderKeyCount++;
-        }
-      }
+      setProviderEnvKey(providerType, key);
     } catch (err) {
       logger.warn(`Failed to load API key for ${providerType}:`, err);
     }
+  }
+
+  try {
+    await ensureProviderStoreMigrated();
+    const accounts = await listProviderAccounts();
+    for (const account of accounts) {
+      try {
+        const key = await getApiKey(account.id);
+        setProviderEnvKey(account.vendorId, key);
+      } catch (err) {
+        logger.warn(`Failed to load API key for provider account ${account.id}:`, err);
+      }
+    }
+  } catch (err) {
+    logger.warn('Failed to load provider account keys for environment injection:', err);
   }
 
   // The moonshot web-search plugin resolves its API key from the env vars
@@ -496,7 +614,10 @@ async function loadProviderEnv(): Promise<{ providerEnv: Record<string, string>;
   // and KIMI_API_KEY is not yet in the env map, inject an alias so the plugin
   // can find the key without requiring an inline apiKey in openclaw.json.
   try {
-    const rawCfg = await readOpenClawConfig();
+    const rawCfg = await readGatewayOpenClawConfig();
+    if (isKimiWebSearchEnabled(rawCfg)) {
+      await ensureKimiWebSearchApiKeyEnvReference();
+    }
     const kimiKey = await resolveKimiWebSearchApiKeyAlias(providerEnv, rawCfg);
     if (kimiKey) {
       providerEnv['KIMI_API_KEY'] = kimiKey;
@@ -514,7 +635,7 @@ async function resolveChannelStartupPolicy(): Promise<{
   channelStartupSummary: string;
 }> {
   try {
-    const rawCfg = await readOpenClawConfig();
+    const rawCfg = await readGatewayOpenClawConfig();
     const configuredChannels = await listConfiguredChannelsFromConfig(rawCfg);
     if (configuredChannels.length === 0) {
       return {
