@@ -47,6 +47,8 @@ const STEP = {
   COMPLETE: 5,
 } as const;
 
+const GATEWAY_SETUP_STARTUP_TIMEOUT_MS = 60 * 1000;
+
 const getSteps = (t: TFunction): SetupStep[] => [
   { id: 'welcome',    title: t('steps.welcome.title'),    description: t('steps.welcome.description') },
   { id: 'workspace',  title: '工作目录',                    description: '选择 AI 数据的存储位置' },
@@ -505,9 +507,14 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
         ...prev,
         gateway: { status: 'error', message: currentGateway.error || t('runtime.status.error') },
       }));
+    } else if (currentGateway.state === 'stopped') {
+      setChecks((prev) => ({
+        ...prev,
+        gateway: { status: 'error', message: 'Gateway is stopped' },
+      }));
     } else {
-      // Gateway is 'stopped', 'starting', or 'reconnecting'
-      // Keep as 'checking' — the dedicated useEffect will update when status changes
+      // Gateway is 'starting' or 'reconnecting'.
+      // Keep as 'checking' — the dedicated useEffect will update when status changes.
       setChecks((prev) => ({
         ...prev,
         gateway: {
@@ -547,11 +554,15 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
         ...prev,
         gateway: { status: 'checking', message: 'Starting...' },
       }));
+    } else if (gatewayStatus.state === 'stopped') {
+      setChecks((prev) => ({
+        ...prev,
+        gateway: { status: 'error', message: 'Gateway is stopped' },
+      }));
     }
-    // 'stopped' state: keep current check status (likely 'checking') to allow startup time
   }, [gatewayStatus, t]);
 
-  // Gateway startup timeout — show error only after giving enough time to initialize
+  // Gateway startup timeout — show error after the normal 10-30s startup window.
   useEffect(() => {
     if (gatewayTimeoutRef.current) {
       clearTimeout(gatewayTimeoutRef.current);
@@ -559,11 +570,11 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
     }
 
     // If gateway is already in a terminal state, no timeout needed
-    if (gatewayStatus.state === 'running' || gatewayStatus.state === 'error') {
+    if (gatewayStatus.state === 'running' || gatewayStatus.state === 'error' || gatewayStatus.state === 'stopped') {
       return;
     }
 
-    // Set timeout for non-terminal states (stopped, starting, reconnecting)
+    // Set timeout for non-terminal startup states (starting, reconnecting).
     gatewayTimeoutRef.current = setTimeout(() => {
       setChecks((prev) => {
         if (prev.gateway.status === 'checking') {
@@ -574,7 +585,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
         }
         return prev;
       });
-    }, 600 * 1000); // 600 seconds — enough for gateway to fully initialize
+    }, GATEWAY_SETUP_STARTUP_TIMEOUT_MS);
 
     return () => {
       if (gatewayTimeoutRef.current) {

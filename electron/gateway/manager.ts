@@ -3,7 +3,6 @@
  * Manages the OpenClaw Gateway process lifecycle
  */
 import { app } from 'electron';
-import path from 'path';
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
 import { PORTS } from '../utils/config';
@@ -12,6 +11,7 @@ import { logger } from '../utils/logger';
 import { captureTelemetryEvent, trackMetric } from '../utils/telemetry';
 import {
   loadOrCreateDeviceIdentity,
+  resolveDeviceIdentityPath,
   type DeviceIdentity,
 } from '../utils/device-identity';
 import {
@@ -20,6 +20,7 @@ import {
   type GatewayLifecycleState,
   getReconnectScheduleDecision,
   getReconnectSkipReason,
+  isNonReconnectableGatewayStartError,
 } from './process-policy';
 import {
   clearPendingGatewayRequests,
@@ -207,7 +208,7 @@ export class GatewayManager extends EventEmitter {
   private async initDeviceIdentity(): Promise<void> {
     if (this.deviceIdentity) return; // already loaded
     try {
-      const identityPath = path.join(app.getPath('userData'), 'uclaw-device-identity.json');
+      const identityPath = resolveDeviceIdentityPath(app.getPath('userData'));
       this.deviceIdentity = await loadOrCreateDeviceIdentity(identityPath);
       logger.debug(`Device identity loaded (deviceId=${this.deviceIdentity.deviceId})`);
     } catch (err) {
@@ -381,7 +382,11 @@ export class GatewayManager extends EventEmitter {
         `Gateway start failed (port=${this.status.port}, reconnectAttempts=${this.reconnectAttempts}, spawn=${this.lastSpawnSummary ?? 'n/a'})`,
         error
       );
-      this.setStatus({ state: 'error', error: String(error) });
+      if (isNonReconnectableGatewayStartError(error)) {
+        logger.warn('Gateway start failed with a non-reconnectable Gateway error; auto-reconnect disabled', error);
+        this.shouldReconnect = false;
+      }
+      this.setStatus({ state: 'error', error: error instanceof Error ? error.message : String(error) });
       throw error;
     } finally {
       this.startLock = false;
@@ -525,6 +530,11 @@ export class GatewayManager extends EventEmitter {
       try {
         await this.start();
       } catch (err) {
+        if (isNonReconnectableGatewayStartError(err)) {
+          logger.warn('Gateway restart: start() failed with a non-reconnectable Gateway error; auto-reconnect disabled', err);
+          this.shouldReconnect = false;
+          throw err;
+        }
         // stop() set shouldReconnect=false. Restore it so the gateway
         // can self-heal via scheduleReconnect() instead of dying permanently.
         logger.warn('Gateway restart: start() failed after stop(), enabling auto-reconnect recovery', err);
@@ -1161,13 +1171,24 @@ export class GatewayManager extends EventEmitter {
         });
         this.reconnectAttempts = 0;
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error('Gateway reconnection attempt failed:', error);
         this.emitReconnectMetric('failure', {
           attemptNo,
           maxAttempts,
           delayMs: effectiveDelay,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage,
         });
+        if (isNonReconnectableGatewayStartError(error)) {
+          logger.warn('Gateway reconnect stopped because the Gateway requires pairing');
+          this.shouldReconnect = false;
+          this.setStatus({
+            state: 'error',
+            error: errorMessage,
+            reconnectAttempts: this.reconnectAttempts,
+          });
+          return;
+        }
         this.scheduleReconnect();
       }
     }, effectiveDelay);

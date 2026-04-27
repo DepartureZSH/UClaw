@@ -3,6 +3,7 @@ import {
   getDeferredRestartAction,
   getReconnectScheduleDecision,
   getReconnectSkipReason,
+  isNonReconnectableGatewayStartError,
   isLifecycleSuperseded,
   nextLifecycleEpoch,
   shouldDeferRestart,
@@ -169,6 +170,18 @@ describe('gateway process policy helpers', () => {
       if (decision.action === 'schedule') {
         expect(decision.delay).toBeLessThanOrEqual(30000);
       }
+    });
+  });
+
+  describe('isNonReconnectableGatewayStartError', () => {
+    it('treats pairing-required handshake failures as permanent startup errors', () => {
+      expect(isNonReconnectableGatewayStartError(new Error('pairing required'))).toBe(true);
+      expect(isNonReconnectableGatewayStartError('Gateway connect handshake failed: pairing required')).toBe(true);
+    });
+
+    it('does not classify transient startup errors as permanent', () => {
+      expect(isNonReconnectableGatewayStartError(new Error('ECONNREFUSED'))).toBe(false);
+      expect(isNonReconnectableGatewayStartError('gateway ready timeout')).toBe(false);
     });
   });
 });

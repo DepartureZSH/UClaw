@@ -31,7 +31,24 @@ export interface DeviceAuthPayloadParams {
   version?: 'v1' | 'v2';
 }
 
+export interface ResolveDeviceIdentityPathOptions {
+  platform?: string;
+  portableRoot?: string | null;
+}
+
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+
+export function resolveDeviceIdentityPath(
+  userDataPath: string,
+  options: ResolveDeviceIdentityPathOptions = {},
+): string {
+  const platform = options.platform ?? process.platform;
+  const portableRoot = options.portableRoot ?? process.env.UCLAW_PORTABLE_ROOT;
+  const fileName = portableRoot
+    ? `uclaw-device-identity-${platform}.json`
+    : 'uclaw-device-identity.json';
+  return path.join(userDataPath, fileName);
+}
 
 function base64UrlEncode(buf: Buffer): string {
   return buf.toString('base64').replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '');

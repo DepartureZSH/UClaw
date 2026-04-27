@@ -34,6 +34,11 @@ export function getReconnectSkipReason(context: ReconnectAttemptContext): string
   return null;
 }
 
+export function isNonReconnectableGatewayStartError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bpairing required\b/i.test(message);
+}
+
 export interface ReconnectScheduleContext {
   shouldReconnect: boolean;
   hasReconnectTimer: boolean;
