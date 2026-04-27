@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stripSystemdSupervisorEnv } from '@electron/gateway/config-sync-env';
 
 describe('stripSystemdSupervisorEnv', () => {
@@ -41,5 +41,86 @@ describe('stripSystemdSupervisorEnv', () => {
 
     expect(env).toEqual(before);
     expect(result).toEqual({ VALUE: '1' });
+  });
+});
+
+describe('kimi web-search API key alias resolution', () => {
+  const runtimeApiKey = vi.fn();
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+
+    vi.doMock('electron', () => ({
+      app: {
+        isPackaged: false,
+        getPath: () => '/tmp/uclaw-test-user-data',
+        getAppPath: () => '/tmp/uclaw-test-app',
+      },
+    }));
+
+    vi.doMock('@electron/utils/openclaw-auth', () => ({
+      batchSyncConfigFields: vi.fn(),
+      getOpenClawRuntimeApiKey: runtimeApiKey,
+      sanitizeOpenClawConfig: vi.fn(),
+    }));
+  });
+
+  it('detects kimi web search from moonshot plugin config', async () => {
+    const { isKimiWebSearchEnabled } = await import('@electron/gateway/config-sync');
+
+    expect(isKimiWebSearchEnabled({
+      plugins: {
+        entries: {
+          moonshot: {
+            enabled: true,
+            config: {
+              webSearch: {
+                baseUrl: 'https://chatbot.example.test/v1',
+                model: 'kimi-k2.5',
+              },
+            },
+          },
+        },
+      },
+    })).toBe(true);
+  });
+
+  it('resolves KIMI_API_KEY from the OpenClaw default model provider when providerEnv is empty', async () => {
+    runtimeApiKey.mockResolvedValue('sk-custom-runtime');
+    const { resolveKimiWebSearchApiKeyAlias } = await import('@electron/gateway/config-sync');
+
+    await expect(resolveKimiWebSearchApiKeyAlias({}, {
+      agents: {
+        defaults: {
+          model: {
+            primary: 'custom-abc12345/kimi-k2.5',
+          },
+        },
+      },
+      plugins: {
+        entries: {
+          moonshot: {
+            enabled: true,
+            config: {
+              webSearch: {
+                model: 'kimi-k2.5',
+              },
+            },
+          },
+        },
+      },
+    })).resolves.toBe('sk-custom-runtime');
+
+    expect(runtimeApiKey).toHaveBeenCalledWith(['custom-abc12345']);
+  });
+
+  it('does not override an explicit moonshot key', async () => {
+    const { resolveKimiWebSearchApiKeyAlias } = await import('@electron/gateway/config-sync');
+
+    await expect(resolveKimiWebSearchApiKeyAlias({ MOONSHOT_API_KEY: 'sk-moonshot' }, {
+      tools: { web: { search: { enabled: true, provider: 'kimi' } } },
+    })).resolves.toBeUndefined();
+    expect(runtimeApiKey).not.toHaveBeenCalled();
   });
 });

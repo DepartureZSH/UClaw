@@ -1,7 +1,6 @@
 import { app } from 'electron';
 import path from 'path';
 import { existsSync, readFileSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'fs';
-import { homedir } from 'os';
 import { join } from 'path';
 
 function fsPath(filePath: string): string {
@@ -21,7 +20,7 @@ import { getProviderEnvVar, getKeyableProviderTypes } from '../utils/provider-re
 import { getOpenClawDir, getOpenClawEntryPath, isOpenClawPresent, getOpenClawConfigDir } from '../utils/paths';
 import { getUvMirrorEnv } from '../utils/uv-env';
 import { cleanupDanglingWeChatPluginState, listConfiguredChannelsFromConfig, readOpenClawConfig } from '../utils/channel-config';
-import { sanitizeOpenClawConfig, batchSyncConfigFields } from '../utils/openclaw-auth';
+import { sanitizeOpenClawConfig, batchSyncConfigFields, getOpenClawRuntimeApiKey } from '../utils/openclaw-auth';
 import { buildProxyEnv, resolveProxySettings } from '../utils/proxy';
 import { syncProxyConfigToOpenClaw } from '../utils/openclaw-proxy';
 import { logger } from '../utils/logger';
@@ -83,6 +82,65 @@ function readPluginVersion(pkgJsonPath: string): string | null {
   } catch {
     return null;
   }
+}
+
+function readObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+export function isKimiWebSearchEnabled(config: Record<string, unknown> | null | undefined): boolean {
+  const tools = readObject(config?.tools);
+  const web = readObject(tools?.web);
+  const search = readObject(web?.search);
+  if (search?.enabled === true && search.provider === 'kimi') {
+    return true;
+  }
+
+  const plugins = readObject(config?.plugins);
+  const entries = readObject(plugins?.entries);
+  const moonshot = readObject(entries?.moonshot);
+  if (moonshot?.enabled === false) {
+    return false;
+  }
+  const moonshotConfig = readObject(moonshot?.config);
+  const webSearch = readObject(moonshotConfig?.webSearch);
+  return Boolean(webSearch && (typeof webSearch.model === 'string' || typeof webSearch.baseUrl === 'string'));
+}
+
+export function getDefaultModelProviderKey(config: Record<string, unknown> | null | undefined): string | undefined {
+  const agents = readObject(config?.agents);
+  const defaults = readObject(agents?.defaults);
+  const model = readObject(defaults?.model);
+  const primary = typeof model?.primary === 'string' ? model.primary.trim() : '';
+  const slashIndex = primary.indexOf('/');
+  return slashIndex > 0 ? primary.slice(0, slashIndex) : undefined;
+}
+
+export async function resolveKimiWebSearchApiKeyAlias(
+  providerEnv: Record<string, string>,
+  config: Record<string, unknown> | null | undefined,
+): Promise<string | undefined> {
+  const existingKey = providerEnv.KIMI_API_KEY || providerEnv.MOONSHOT_API_KEY;
+  if (existingKey) {
+    return undefined;
+  }
+  if (!isKimiWebSearchEnabled(config)) {
+    return undefined;
+  }
+
+  const envKey = Object.values(providerEnv).find(Boolean);
+  if (envKey) {
+    return envKey;
+  }
+
+  const defaultProviderKey = getDefaultModelProviderKey(config);
+  if (!defaultProviderKey) {
+    return undefined;
+  }
+
+  return await getOpenClawRuntimeApiKey([defaultProviderKey]) ?? undefined;
 }
 
 function buildBundledPluginSources(pluginDirName: string): string[] {
@@ -367,21 +425,11 @@ async function loadProviderEnv(): Promise<{ providerEnv: Record<string, string>;
   // and KIMI_API_KEY is not yet in the env map, inject an alias so the plugin
   // can find the key without requiring an inline apiKey in openclaw.json.
   try {
-    if (!providerEnv['KIMI_API_KEY'] && !providerEnv['MOONSHOT_API_KEY']) {
-      const rawCfg = await readOpenClawConfig();
-      const tools = rawCfg?.tools as Record<string, unknown> | undefined;
-      const web = tools && typeof tools.web === 'object' && tools.web !== null ? tools.web as Record<string, unknown> : null;
-      const search = web && typeof web.search === 'object' && web.search !== null ? web.search as Record<string, unknown> : null;
-      const kimiEnabled = search?.enabled === true && search?.provider === 'kimi';
-      if (kimiEnabled) {
-        // Find the first provider key whose env var resolves to a non-empty value
-        // and use it as the KIMI_API_KEY alias.
-        const kimiKey = Object.values(providerEnv).find(Boolean);
-        if (kimiKey) {
-          providerEnv['KIMI_API_KEY'] = kimiKey;
-          logger.info('[config-sync] Aliased KIMI_API_KEY from compatible provider for kimi web-search');
-        }
-      }
+    const rawCfg = await readOpenClawConfig();
+    const kimiKey = await resolveKimiWebSearchApiKeyAlias(providerEnv, rawCfg);
+    if (kimiKey) {
+      providerEnv['KIMI_API_KEY'] = kimiKey;
+      logger.info('[config-sync] Aliased KIMI_API_KEY from compatible provider for kimi web-search');
     }
   } catch (err) {
     logger.warn('[config-sync] Failed to inject KIMI_API_KEY alias:', err);
@@ -473,7 +521,7 @@ export async function prepareGatewayLaunchContext(port: number): Promise<Gateway
     // Expose the active provider API key as KIMI_API_KEY so the moonshot plugin's
     // web-search provider falls back to it via readProviderEnvValue(["KIMI_API_KEY",
     // "MOONSHOT_API_KEY"]) without needing to store any secret in openclaw.json.
-    ...(providerEnv['NEW_API_KEY'] ? { KIMI_API_KEY: providerEnv['NEW_API_KEY'] } : {}),
+    ...(providerEnv['NEW_API_KEY'] && !providerEnv['KIMI_API_KEY'] ? { KIMI_API_KEY: providerEnv['NEW_API_KEY'] } : {}),
   };
 
   // Set OPENCLAW_HOME so the gateway resolves all paths to the correct location.
