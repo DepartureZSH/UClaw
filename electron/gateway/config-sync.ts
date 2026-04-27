@@ -94,8 +94,6 @@ function readObject(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-const KIMI_WEB_SEARCH_API_KEY_ENV_REF = '${KIMI_API_KEY}';
-
 async function readGatewayOpenClawConfig(): Promise<Record<string, unknown>> {
   const configPath = join(getOpenClawConfigDir(), 'openclaw.json');
   try {
@@ -173,17 +171,9 @@ function getKimiWebSearchConfig(config: Record<string, unknown> | null | undefin
   return search?.provider === 'kimi' ? search : undefined;
 }
 
-function ensureObject(target: Record<string, unknown>, key: string): Record<string, unknown> {
-  const current = readObject(target[key]);
-  if (current) return current;
-  const next: Record<string, unknown> = {};
-  target[key] = next;
-  return next;
-}
-
-function shouldReplaceKimiWebSearchApiKey(value: unknown): boolean {
+function shouldClearKimiWebSearchApiKey(value: unknown): boolean {
   if (value == null) {
-    return true;
+    return false;
   }
 
   if (typeof value === 'string') {
@@ -197,7 +187,7 @@ function shouldReplaceKimiWebSearchApiKey(value: unknown): boolean {
 
   const ref = readObject(value);
   if (ref?.source === 'env') {
-    return ref.id !== 'KIMI_API_KEY';
+    return true;
   }
 
   return false;
@@ -208,20 +198,17 @@ export function applyKimiWebSearchApiKeyEnvReference(config: Record<string, unkn
     return false;
   }
 
-  const plugins = ensureObject(config, 'plugins');
-  const entries = ensureObject(plugins, 'entries');
-  const moonshot = ensureObject(entries, 'moonshot');
-  if (moonshot.enabled === undefined) {
-    moonshot.enabled = true;
-  }
-  const moonshotConfig = ensureObject(moonshot, 'config');
-  const webSearch = ensureObject(moonshotConfig, 'webSearch');
+  const plugins = readObject(config.plugins);
+  const entries = readObject(plugins?.entries);
+  const moonshot = readObject(entries?.moonshot);
+  const moonshotConfig = readObject(moonshot?.config);
+  const webSearch = readObject(moonshotConfig?.webSearch);
 
-  if (!shouldReplaceKimiWebSearchApiKey(webSearch.apiKey)) {
+  if (!webSearch || !shouldClearKimiWebSearchApiKey(webSearch.apiKey)) {
     return false;
   }
 
-  webSearch.apiKey = KIMI_WEB_SEARCH_API_KEY_ENV_REF;
+  delete webSearch.apiKey;
   return true;
 }
 
@@ -232,7 +219,7 @@ async function ensureKimiWebSearchApiKeyEnvReference(): Promise<void> {
       return;
     }
     await writeGatewayOpenClawConfig(config);
-    logger.info('[config-sync] Pointed kimi web-search credential at KIMI_API_KEY env reference');
+    logger.info('[config-sync] Cleared kimi web-search inline credential; Gateway will use KIMI_API_KEY env');
   });
 }
 
@@ -314,6 +301,61 @@ export async function resolveKimiWebSearchApiKeyAlias(
   }
 
   return await getOpenClawRuntimeApiKey(providerCandidates) ?? undefined;
+}
+
+export interface KimiWebSearchStatus {
+  enabled: boolean;
+  hasApiKey: boolean;
+  ok: boolean;
+  providerCandidates: string[];
+  message: string;
+}
+
+function hasExplicitKimiWebSearchApiKey(config: Record<string, unknown> | null | undefined): boolean {
+  const webSearch = getKimiWebSearchConfig(config);
+  const apiKey = webSearch?.apiKey;
+  if (typeof apiKey === 'string') {
+    return !shouldClearKimiWebSearchApiKey(apiKey);
+  }
+
+  const apiKeyRef = readObject(apiKey);
+  return Boolean(apiKeyRef && apiKeyRef.source !== 'env');
+}
+
+export async function getKimiWebSearchStatus(): Promise<KimiWebSearchStatus> {
+  const config = await readGatewayOpenClawConfig();
+  if (!isKimiWebSearchEnabled(config)) {
+    return {
+      enabled: false,
+      hasApiKey: false,
+      ok: true,
+      providerCandidates: [],
+      message: 'Kimi web search is not enabled',
+    };
+  }
+
+  const providerCandidates = getKimiWebSearchProviderCandidates(config);
+  if (hasExplicitKimiWebSearchApiKey(config)) {
+    return {
+      enabled: true,
+      hasApiKey: true,
+      ok: true,
+      providerCandidates,
+      message: 'Kimi web search has an explicit API key',
+    };
+  }
+
+  const { providerEnv } = await loadProviderEnv();
+  const hasApiKey = Boolean(providerEnv.KIMI_API_KEY || providerEnv.MOONSHOT_API_KEY);
+  return {
+    enabled: true,
+    hasApiKey,
+    ok: hasApiKey,
+    providerCandidates,
+    message: hasApiKey
+      ? 'Kimi web search can resolve an API key'
+      : 'Kimi web search is enabled but no compatible API key was found',
+  };
 }
 
 function buildBundledPluginSources(pluginDirName: string): string[] {
@@ -509,36 +551,11 @@ export async function syncGatewayConfigBeforeLaunch(
     logger.warn('Failed to clean stale built-in extensions:', err);
   }
 
-  // Auto-upgrade installed plugins before Gateway starts so that
-  // the plugin manifest ID matches what sanitize wrote to the config.
-  // Read config once and reuse for both listConfiguredChannels and plugins.allow.
+  // Lazily install/upgrade channel plugins only when a real channel config
+  // exists.  A broad plugins.allow list alone should not slow first launch.
   try {
     const rawCfg = await readGatewayOpenClawConfig();
     const configuredChannels = await listConfiguredChannelsFromConfig(rawCfg);
-
-    // Also ensure plugins referenced in plugins.allow are installed even if
-    // they have no channels.X section yet (e.g. qqbot added via plugins.allow
-    // but never fully saved through UClaw UI).
-    try {
-      const allowList = Array.isArray(rawCfg.plugins?.allow) ? (rawCfg.plugins!.allow as string[]) : [];
-      const pluginIdToChannel: Record<string, string> = {};
-      for (const [channelType, info] of Object.entries(CHANNEL_PLUGIN_MAP)) {
-        pluginIdToChannel[info.dirName] = channelType;
-      }
-
-      pluginIdToChannel['openclaw-lark'] = 'feishu';
-      pluginIdToChannel['feishu-openclaw-plugin'] = 'feishu';
-
-      for (const pluginId of allowList) {
-        const channelType = pluginIdToChannel[pluginId] ?? pluginId;
-        if (CHANNEL_PLUGIN_MAP[channelType] && !configuredChannels.includes(channelType)) {
-          configuredChannels.push(channelType);
-        }
-      }
-
-    } catch (err) {
-      logger.warn('[plugin] Failed to augment channel list from plugins.allow:', err);
-    }
 
     ensureConfiguredPluginsUpgraded(configuredChannels);
   } catch (err) {

@@ -2,7 +2,7 @@
  * Zustand Stores Tests
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useSettingsStore } from '@/stores/settings';
+import { migrateSettingsState, useSettingsStore } from '@/stores/settings';
 import { useGatewayStore } from '@/stores/gateway';
 
 describe('Settings Store', () => {
@@ -88,6 +88,13 @@ describe('Settings Store', () => {
         method: 'PUT',
       }),
     );
+  });
+
+  it('forces legacy setup completion state through setup once', () => {
+    expect(migrateSettingsState({ setupComplete: true, theme: 'dark' }, 0)).toMatchObject({
+      setupComplete: false,
+      theme: 'dark',
+    });
   });
 });
 

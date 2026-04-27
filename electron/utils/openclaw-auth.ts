@@ -1923,38 +1923,68 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
         }
       }
 
-      const installedFeishuId = await resolveInstalledFeishuPluginId();
-      const configuredFeishuId =
-        FEISHU_PLUGIN_ID_CANDIDATES.find((id) => allowArr.includes(id))
-        || FEISHU_PLUGIN_ID_CANDIDATES.find((id) => Boolean(pEntries[id]));
-      const canonicalFeishuId = installedFeishuId || configuredFeishuId || FEISHU_PLUGIN_ID_CANDIDATES[0];
+      const channelSections = isPlainRecord(config.channels) ? config.channels as Record<string, unknown> : {};
+      const feishuSection = channelSections.feishu;
+      const hasConfiguredFeishuChannel =
+        isPlainRecord(feishuSection)
+        && feishuSection.enabled !== false
+        && Object.keys(feishuSection).length > 0;
+      let canonicalFeishuId: string | null = null;
 
-      const existingFeishuEntry =
-        FEISHU_PLUGIN_ID_CANDIDATES.map((id) => pEntries[id]).find(Boolean)
-        || pEntries.feishu;
-
-      const normalizedAllow = allowArr.filter(
-        (id) => id !== 'feishu' && !FEISHU_PLUGIN_ID_CANDIDATES.includes(id as typeof FEISHU_PLUGIN_ID_CANDIDATES[number]),
-      );
-      normalizedAllow.push(canonicalFeishuId);
-      if (JSON.stringify(normalizedAllow) !== JSON.stringify(allowArr)) {
-        pluginsObj.allow = normalizedAllow;
-        modified = true;
-        console.log(`[sanitize] Normalized plugins.allow for feishu -> ${canonicalFeishuId}`);
-      }
-
-      if (existingFeishuEntry || !pEntries[canonicalFeishuId]) {
-        pEntries[canonicalFeishuId] = {
-          ...(existingFeishuEntry || {}),
-          ...(pEntries[canonicalFeishuId] || {}),
-          enabled: true,
-        };
-        modified = true;
-      }
-      for (const id of FEISHU_PLUGIN_ID_CANDIDATES) {
-        if (id !== canonicalFeishuId && pEntries[id]) {
-          delete pEntries[id];
+      if (!hasConfiguredFeishuChannel) {
+        const cleanedAllow = allowArr.filter(
+          (id) => id !== 'feishu' && !FEISHU_PLUGIN_ID_CANDIDATES.includes(id as typeof FEISHU_PLUGIN_ID_CANDIDATES[number]),
+        );
+        if (JSON.stringify(cleanedAllow) !== JSON.stringify(allowArr)) {
+          pluginsObj.allow = cleanedAllow;
           modified = true;
+          console.log('[sanitize] Removed Feishu/Lark plugin ids from plugins.allow (no feishu channel configured)');
+        }
+
+        for (const id of FEISHU_PLUGIN_ID_CANDIDATES) {
+          if (pEntries[id]) {
+            delete pEntries[id];
+            modified = true;
+          }
+        }
+        if (isPlainRecord(pEntries.feishu) && pEntries.feishu.enabled === false) {
+          delete pEntries.feishu;
+          modified = true;
+        }
+      } else {
+        const installedFeishuId = await resolveInstalledFeishuPluginId();
+        const configuredFeishuId =
+          FEISHU_PLUGIN_ID_CANDIDATES.find((id) => allowArr.includes(id))
+          || FEISHU_PLUGIN_ID_CANDIDATES.find((id) => Boolean(pEntries[id]));
+        canonicalFeishuId = installedFeishuId || configuredFeishuId || FEISHU_PLUGIN_ID_CANDIDATES[0];
+
+        const existingFeishuEntry =
+          FEISHU_PLUGIN_ID_CANDIDATES.map((id) => pEntries[id]).find(Boolean)
+          || pEntries.feishu;
+
+        const normalizedAllow = allowArr.filter(
+          (id) => id !== 'feishu' && !FEISHU_PLUGIN_ID_CANDIDATES.includes(id as typeof FEISHU_PLUGIN_ID_CANDIDATES[number]),
+        );
+        normalizedAllow.push(canonicalFeishuId);
+        if (JSON.stringify(normalizedAllow) !== JSON.stringify(allowArr)) {
+          pluginsObj.allow = normalizedAllow;
+          modified = true;
+          console.log(`[sanitize] Normalized plugins.allow for feishu -> ${canonicalFeishuId}`);
+        }
+
+        if (existingFeishuEntry || !pEntries[canonicalFeishuId]) {
+          pEntries[canonicalFeishuId] = {
+            ...(existingFeishuEntry || {}),
+            ...(pEntries[canonicalFeishuId] || {}),
+            enabled: true,
+          };
+          modified = true;
+        }
+        for (const id of FEISHU_PLUGIN_ID_CANDIDATES) {
+          if (id !== canonicalFeishuId && pEntries[id]) {
+            delete pEntries[id];
+            modified = true;
+          }
         }
       }
 
@@ -2047,7 +2077,8 @@ export async function sanitizeOpenClawConfig(): Promise<void> {
       //      causes the Gateway to report the feishu channel as "disabled".
       //      Since 'feishu' is not in plugins.allow, the built-in won't load.
       const allowArr2 = Array.isArray(pluginsObj.allow) ? pluginsObj.allow as string[] : [];
-      const hasCanonicalFeishu = allowArr2.includes(canonicalFeishuId) || !!pEntries[canonicalFeishuId];
+      const hasCanonicalFeishu = canonicalFeishuId != null
+        && (allowArr2.includes(canonicalFeishuId) || !!pEntries[canonicalFeishuId]);
       if (hasCanonicalFeishu && canonicalFeishuId !== 'feishu') {
         // Remove bare 'feishu' from plugins.allow
         const bareFeishuIdx = allowArr2.indexOf('feishu');

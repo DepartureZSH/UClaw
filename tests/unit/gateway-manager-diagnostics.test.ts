@@ -125,6 +125,29 @@ describe('GatewayManager diagnostics', () => {
     expect(health.reasons).not.toContain('rpc_timeout');
   });
 
+  it('fails runtime RPCs fast while gateway readiness is still pending', async () => {
+    const { GatewayManager } = await import('@electron/gateway/manager');
+    const manager = new GatewayManager();
+
+    const ws = {
+      readyState: 1,
+      send: vi.fn(),
+      ping: vi.fn(),
+      terminate: vi.fn(),
+      on: vi.fn(),
+    };
+
+    (manager as unknown as { ws: typeof ws }).ws = ws;
+    const stateController = (manager as unknown as { stateController: { setStatus: (u: Record<string, unknown>) => void } }).stateController;
+    stateController.setStatus({ state: 'running', port: 18789, connectedAt: Date.now(), gatewayReady: false });
+
+    await expect(manager.rpc('chat.history', {}, 35_000)).rejects.toThrow(
+      'Gateway RPC unavailable during startup: chat.history',
+    );
+    expect(ws.send).not.toHaveBeenCalled();
+    expect(manager.getDiagnostics().consecutiveRpcFailures).toBe(0);
+  });
+
   it('keeps windows heartbeat recovery disabled while diagnostics degrade', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32' });
 

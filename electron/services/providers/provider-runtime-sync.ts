@@ -191,7 +191,9 @@ function scheduleGatewayRefresh(
     return;
   }
 
-  if (options?.onlyIfRunning && gatewayManager.getStatus().state === 'stopped') {
+  const gatewayState = gatewayManager.getStatus().state;
+  if (gatewayState === 'stopped' || (options?.onlyIfRunning && gatewayState !== 'running')) {
+    logger.debug(`${message}; Gateway state is ${gatewayState}, deferring refresh until next start`);
     return;
   }
 

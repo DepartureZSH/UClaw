@@ -496,6 +496,34 @@ describe('sanitizeOpenClawConfig', () => {
     expect(dingtalk.clientId).toBe('dt-client-id');
     expect(dingtalk.clientSecret).toBe('dt-secret');
   });
+
+  it('removes stale Feishu/Lark plugin config when no feishu channel is configured', async () => {
+    await writeOpenClawJson({
+      plugins: {
+        allow: ['browser', 'openclaw-lark'],
+        entries: {
+          'openclaw-lark': { enabled: true },
+          feishu: { enabled: false },
+        },
+      },
+    });
+
+    const { sanitizeOpenClawConfig } = await import('@electron/utils/openclaw-auth');
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await sanitizeOpenClawConfig();
+
+    const result = await readOpenClawJson();
+    const plugins = result.plugins as Record<string, unknown> | undefined;
+    const allow = plugins?.allow as string[] | undefined;
+    const entries = plugins?.entries as Record<string, unknown> | undefined;
+
+    expect(allow ?? []).not.toContain('openclaw-lark');
+    expect(entries?.['openclaw-lark']).toBeUndefined();
+    expect(entries?.feishu).toBeUndefined();
+
+    logSpy.mockRestore();
+  });
 });
 
 describe('syncProviderConfigToOpenClaw', () => {

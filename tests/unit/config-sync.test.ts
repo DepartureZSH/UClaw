@@ -111,7 +111,7 @@ describe('kimi web-search API key alias resolution', () => {
     })).toBe(false);
   });
 
-  it('points kimi web-search plugin credentials at the KIMI_API_KEY env ref', async () => {
+  it('clears env-style kimi web-search plugin credentials so Gateway uses KIMI_API_KEY env', async () => {
     const { applyKimiWebSearchApiKeyEnvReference } = await import('@electron/gateway/config-sync');
     const config = {
       tools: {
@@ -137,7 +137,31 @@ describe('kimi web-search API key alias resolution', () => {
     };
 
     expect(applyKimiWebSearchApiKeyEnvReference(config)).toBe(true);
-    expect(config.plugins.entries.moonshot.config.webSearch.apiKey).toBe('${KIMI_API_KEY}');
+    expect(config.plugins.entries.moonshot.config.webSearch.apiKey).toBeUndefined();
+  });
+
+  it('does not create a moonshot web-search plugin entry when no apiKey needs clearing', async () => {
+    const { applyKimiWebSearchApiKeyEnvReference } = await import('@electron/gateway/config-sync');
+    const config = {
+      tools: {
+        web: {
+          search: {
+            provider: 'kimi',
+          },
+        },
+      },
+    };
+
+    expect(applyKimiWebSearchApiKeyEnvReference(config)).toBe(false);
+    expect(config).toEqual({
+      tools: {
+        web: {
+          search: {
+            provider: 'kimi',
+          },
+        },
+      },
+    });
   });
 
   it('does not overwrite an explicit kimi web-search API key', async () => {

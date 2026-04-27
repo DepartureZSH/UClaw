@@ -23,7 +23,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { useGatewayStore } from '@/stores/gateway';
 import { useSettingsStore } from '@/stores/settings';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -47,7 +46,15 @@ const STEP = {
   COMPLETE: 5,
 } as const;
 
-const GATEWAY_SETUP_STARTUP_TIMEOUT_MS = 60 * 1000;
+type CheckStatus = 'checking' | 'success' | 'error';
+
+type KimiWebSearchStatus = {
+  enabled: boolean;
+  hasApiKey: boolean;
+  ok: boolean;
+  providerCandidates: string[];
+  message: string;
+};
 
 const getSteps = (t: TFunction): SetupStep[] => [
   { id: 'welcome',    title: t('steps.welcome.title'),    description: t('steps.welcome.description') },
@@ -132,6 +139,23 @@ export function Setup() {
     return () => { cancelled = true; };
   }, [workspaceDir]);
 
+  const requestGatewayStartAfterSetup = () => {
+    void invokeIpc<{ state: string }>('gateway:status')
+      .then(async (status) => {
+        if (status.state === 'running' || status.state === 'starting' || status.state === 'reconnecting') {
+          return;
+        }
+
+        const result = await invokeIpc<{ success?: boolean; error?: string }>('gateway:start');
+        if (!result?.success) {
+          throw new Error(result?.error || 'Failed to start Gateway');
+        }
+      })
+      .catch((error) => {
+        toast.error(`Gateway 启动失败：${error instanceof Error ? error.message : String(error)}`);
+      });
+  };
+
   const handleNext = async () => {
     if (safeStepIndex === STEP.WORKSPACE) {
       const result = await invokeIpc<{ success?: boolean; hasOpenClawConfig?: boolean }>('app:applyWorkspaceDir', workspaceDir);
@@ -142,17 +166,10 @@ export function Setup() {
       return;
     }
     if (isLastStep) {
-      markSetupComplete();
-      if (workspaceDir) {
-        // Kick off gateway restart (OPENCLAW_HOME now points to new workspace).
-        // Don't await — navigate immediately; main page handles reconnect state.
-        invokeIpc('gateway:restart').catch(() => {});
-        toast.success(t('complete.title'));
-        navigate('/');
-      } else {
-        toast.success(t('complete.title'));
-        navigate('/');
-      }
+      await markSetupComplete();
+      requestGatewayStartAfterSetup();
+      toast.success(t('complete.title'));
+      navigate('/');
     } else {
       setCurrentStep((i) => i + 1);
     }
@@ -160,7 +177,11 @@ export function Setup() {
 
   const handleBack = () => setCurrentStep((i) => Math.max(i - 1, 0));
 
-  const handleSkip = () => { markSetupComplete(); navigate('/'); };
+  const handleSkip = async () => {
+    await markSetupComplete();
+    requestGatewayStartAfterSetup();
+    navigate('/');
+  };
 
   const handleInstallationComplete = useCallback((skills: string[]) => {
     setInstalledSkills(skills);
@@ -423,25 +444,20 @@ interface RuntimeContentProps {
 
 function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
   const { t } = useTranslation('setup');
-  const gatewayStatus = useGatewayStore((state) => state.status);
-  const startGateway = useGatewayStore((state) => state.start);
 
   const [checks, setChecks] = useState({
-    nodejs: { status: 'checking' as 'checking' | 'success' | 'error', message: '' },
-    openclaw: { status: 'checking' as 'checking' | 'success' | 'error', message: '' },
-    gateway: { status: 'checking' as 'checking' | 'success' | 'error', message: '' },
+    nodejs: { status: 'checking' as CheckStatus, message: '' },
+    openclaw: { status: 'checking' as CheckStatus, message: '' },
   });
   const [showLogs, setShowLogs] = useState(false);
   const [logContent, setLogContent] = useState('');
   const [openclawDir, setOpenclawDir] = useState('');
-  const gatewayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const runChecks = useCallback(async () => {
     // Reset checks
     setChecks({
       nodejs: { status: 'checking', message: '' },
       openclaw: { status: 'checking', message: '' },
-      gateway: { status: 'checking', message: '' },
     });
 
     // Check Node.js — always available in Electron
@@ -493,115 +509,17 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
         openclaw: { status: 'error', message: `Check failed: ${error}` },
       }));
     }
-
-    // Check Gateway — read directly from store to avoid stale closure
-    // Don't immediately report error; gateway may still be initializing
-    const currentGateway = useGatewayStore.getState().status;
-    if (currentGateway.state === 'running') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'success', message: `Running on port ${currentGateway.port}` },
-      }));
-    } else if (currentGateway.state === 'error') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'error', message: currentGateway.error || t('runtime.status.error') },
-      }));
-    } else if (currentGateway.state === 'stopped') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'error', message: 'Gateway is stopped' },
-      }));
-    } else {
-      // Gateway is 'starting' or 'reconnecting'.
-      // Keep as 'checking' — the dedicated useEffect will update when status changes.
-      setChecks((prev) => ({
-        ...prev,
-        gateway: {
-          status: 'checking',
-          message: currentGateway.state === 'starting' ? t('runtime.status.checking') : 'Waiting for gateway...'
-        },
-      }));
-    }
   }, [t]);
 
   useEffect(() => {
     runChecks();
   }, [runChecks]);
 
-  // Update canProceed when gateway status changes
   useEffect(() => {
     const allPassed = checks.nodejs.status === 'success'
-      && checks.openclaw.status === 'success'
-      && (checks.gateway.status === 'success' || gatewayStatus.state === 'running');
+      && checks.openclaw.status === 'success';
     onStatusChange(allPassed);
-  }, [checks, gatewayStatus, onStatusChange]);
-
-  // Update gateway check when gateway status changes
-  useEffect(() => {
-    if (gatewayStatus.state === 'running') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'success', message: t('runtime.status.gatewayRunning', { port: gatewayStatus.port }) },
-      }));
-    } else if (gatewayStatus.state === 'error') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'error', message: gatewayStatus.error || 'Failed to start' },
-      }));
-    } else if (gatewayStatus.state === 'starting' || gatewayStatus.state === 'reconnecting') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'checking', message: 'Starting...' },
-      }));
-    } else if (gatewayStatus.state === 'stopped') {
-      setChecks((prev) => ({
-        ...prev,
-        gateway: { status: 'error', message: 'Gateway is stopped' },
-      }));
-    }
-  }, [gatewayStatus, t]);
-
-  // Gateway startup timeout — show error after the normal 10-30s startup window.
-  useEffect(() => {
-    if (gatewayTimeoutRef.current) {
-      clearTimeout(gatewayTimeoutRef.current);
-      gatewayTimeoutRef.current = null;
-    }
-
-    // If gateway is already in a terminal state, no timeout needed
-    if (gatewayStatus.state === 'running' || gatewayStatus.state === 'error' || gatewayStatus.state === 'stopped') {
-      return;
-    }
-
-    // Set timeout for non-terminal startup states (starting, reconnecting).
-    gatewayTimeoutRef.current = setTimeout(() => {
-      setChecks((prev) => {
-        if (prev.gateway.status === 'checking') {
-          return {
-            ...prev,
-            gateway: { status: 'error', message: 'Gateway startup timed out' },
-          };
-        }
-        return prev;
-      });
-    }, GATEWAY_SETUP_STARTUP_TIMEOUT_MS);
-
-    return () => {
-      if (gatewayTimeoutRef.current) {
-        clearTimeout(gatewayTimeoutRef.current);
-        gatewayTimeoutRef.current = null;
-      }
-    };
-  }, [gatewayStatus.state]);
-
-  const handleStartGateway = async () => {
-    setChecks((prev) => ({
-      ...prev,
-      gateway: { status: 'checking', message: 'Starting...' },
-    }));
-    await startGateway();
-  };
+  }, [checks, onStatusChange]);
 
   const handleShowLogs = async () => {
     try {
@@ -627,7 +545,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
 
   const ERROR_TRUNCATE_LEN = 30;
 
-  const renderStatus = (status: 'checking' | 'success' | 'error', message: string) => {
+  const renderStatus = (status: CheckStatus, message: string) => {
     if (status === 'checking') {
       return (
         <span className="flex items-center gap-2 text-yellow-400 whitespace-nowrap">
@@ -700,19 +618,6 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
             {renderStatus(checks.openclaw.status, checks.openclaw.message)}
           </div>
         </div>
-        <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-muted/50">
-          <div className="flex items-center gap-2 text-left">
-            <span>{t('runtime.gateway')}</span>
-            {checks.gateway.status === 'error' && (
-              <Button variant="outline" size="sm" onClick={handleStartGateway}>
-                {t('runtime.startGateway')}
-              </Button>
-            )}
-          </div>
-          <div className="flex justify-end">
-            {renderStatus(checks.gateway.status, checks.gateway.message)}
-          </div>
-        </div>
       </div>
 
       {(checks.nodejs.status === 'error' || checks.openclaw.status === 'error') && (
@@ -770,12 +675,16 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
   const [selectedWebSearchModel, setSelectedWebSearchModel] = useState('');
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [webSearchCheck, setWebSearchCheck] = useState<{
+    status: CheckStatus;
+    message: string;
+  } | null>(null);
   const [modelPricing, setModelPricing] = useState<Record<string, { input: number; output: number }>>({});
 
   const handleFetchModels = async () => {
     const key = apiKey.trim();
     if (!key) { setFetchError('请先输入 API Key'); return; }
-    setFetchingModels(true); setFetchError(null); setFetchedModels([]); setModelPricing({});
+    setFetchingModels(true); setFetchError(null); setFetchedModels([]); setModelPricing({}); setWebSearchCheck(null);
     try {
       const url = (baseUrl.trim() || DEFAULT_BASE_URL).replace(/\/$/, '');
       const data = await hostApiFetch<{ success: boolean; models: string[]; pricing?: Record<string, { input: number; output: number }>; error?: string }>(
@@ -801,6 +710,7 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
     if (!key) { setSaveError('请输入 API Key'); return; }
     if (fetchedModels.length === 0) { setSaveError('请先点击「获取模型列表」验证接口'); return; }
     setSaving(true); setSaveError(null);
+    setWebSearchCheck(null);
     try {
       const resolvedBase = (baseUrl.trim() || DEFAULT_BASE_URL).replace(/\/$/, '');
       const account = {
@@ -824,6 +734,15 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
       await invokeIpc('openclaw:applyInitialConfig', key, resolvedBase, selectedWebSearchModel || undefined);
       if (Object.keys(modelPricing).length > 0) {
         await invokeIpc('openclaw:syncModelPricing', 'new-api', modelPricing);
+      }
+      if (selectedWebSearchModel) {
+        setWebSearchCheck({ status: 'checking', message: '正在校验网页搜索...' });
+        const webSearchStatus = await invokeIpc<KimiWebSearchStatus>('openclaw:webSearchStatus');
+        if (!webSearchStatus.hasApiKey) {
+          setWebSearchCheck({ status: 'error', message: '未能解析到 Kimi API Key' });
+          throw new Error('网页搜索已启用，但未能解析到 Kimi API Key');
+        }
+        setWebSearchCheck({ status: 'success', message: 'Kimi 搜索密钥可用' });
       }
       onSaved();
       toast.success('AI 提供商已配置');
@@ -911,6 +830,18 @@ function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
             <ChevronRight className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 h-4 w-4 text-muted-foreground" />
           </div>
           <p className="text-xs text-muted-foreground">通过 Kimi 模型的联网能力进行网页搜索</p>
+          {webSearchCheck && (
+            <p
+              className={cn(
+                'text-xs',
+                webSearchCheck.status === 'success' && 'text-green-500',
+                webSearchCheck.status === 'error' && 'text-red-500',
+                webSearchCheck.status === 'checking' && 'text-yellow-500',
+              )}
+            >
+              {webSearchCheck.message}
+            </p>
+          )}
         </div>
       )}
 
@@ -1119,7 +1050,6 @@ interface CompleteContentProps {
 
 function CompleteContent({ installedSkills }: CompleteContentProps) {
   const { t } = useTranslation(['setup', 'settings']);
-  const gatewayStatus = useGatewayStore((state) => state.status);
 
   const installedSkillNames = getDefaultSkills(t)
     .filter((s: DefaultSkill) => installedSkills.includes(s.id))
@@ -1139,12 +1069,6 @@ function CompleteContent({ installedSkills }: CompleteContentProps) {
           <span>{t('complete.components')}</span>
           <span className="text-green-400">
             {installedSkillNames || `${installedSkills.length} ${t('installing.status.installed')}`}
-          </span>
-        </div>
-        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-          <span>{t('complete.gateway')}</span>
-          <span className={gatewayStatus.state === 'running' ? 'text-green-400' : 'text-yellow-400'}>
-            {gatewayStatus.state === 'running' ? `✓ ${t('complete.running')}` : gatewayStatus.state}
           </span>
         </div>
       </div>

@@ -149,14 +149,16 @@ function App() {
   // Initialize Gateway connection on mount
   useEffect(() => {
     if (!portableDiagnosticsLoaded || portableDiagnostics?.isAppTranslocated) return;
+    if (!setupComplete && !skipSetupForE2E) return;
     initGateway();
-  }, [initGateway, portableDiagnosticsLoaded, portableDiagnostics?.isAppTranslocated]);
+  }, [initGateway, portableDiagnosticsLoaded, portableDiagnostics?.isAppTranslocated, setupComplete, skipSetupForE2E]);
 
   // Initialize provider snapshot on mount
   useEffect(() => {
     if (!portableDiagnosticsLoaded || portableDiagnostics?.isAppTranslocated) return;
+    if (!setupComplete && !skipSetupForE2E) return;
     initProviders();
-  }, [initProviders, portableDiagnosticsLoaded, portableDiagnostics?.isAppTranslocated]);
+  }, [initProviders, portableDiagnosticsLoaded, portableDiagnostics?.isAppTranslocated, setupComplete, skipSetupForE2E]);
 
   // Redirect to setup wizard if not complete
   useEffect(() => {

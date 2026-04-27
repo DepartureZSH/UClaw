@@ -51,6 +51,9 @@ export interface AppSettings {
   // Workspace
   workspaceDir: string;
 
+  // Setup
+  setupComplete: boolean;
+
   // UI State
   sidebarCollapsed: boolean;
   devModeUnlocked: boolean;
@@ -108,6 +111,9 @@ function createDefaultSettings(): AppSettings {
 
     // Workspace
     workspaceDir: '',
+
+    // Setup
+    setupComplete: false,
 
     // UI State
     sidebarCollapsed: false,

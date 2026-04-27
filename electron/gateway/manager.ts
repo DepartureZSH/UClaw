@@ -157,10 +157,15 @@ export class GatewayManager extends EventEmitter {
   private static readonly HEARTBEAT_MAX_MISSES_WIN = 5;
   public static readonly RESTART_COOLDOWN_MS = 5_000;
   private static readonly GATEWAY_READY_FALLBACK_MS = 30_000;
+  private static readonly GATEWAY_READY_PROBE_INITIAL_DELAY_MS = 500;
+  private static readonly GATEWAY_READY_PROBE_INTERVAL_MS = 2_000;
+  private static readonly GATEWAY_READY_PROBE_TIMEOUT_MS = 5_000;
   private lastRestartAt = 0;
   /** Set by scheduleReconnect() before calling start() to signal auto-reconnect. */
   private isAutoReconnectStart = false;
   private gatewayReadyFallbackTimer: NodeJS.Timeout | null = null;
+  private gatewayReadyProbeTimer: NodeJS.Timeout | null = null;
+  private gatewayReadyProbeInFlight = false;
   private diagnostics: GatewayDiagnosticsSnapshot = {
     consecutiveHeartbeatMisses: 0,
     consecutiveRpcFailures: 0,
@@ -197,11 +202,7 @@ export class GatewayManager extends EventEmitter {
     // so that async file I/O and key generation don't block module loading.
 
     this.on('gateway:ready', () => {
-      this.clearGatewayReadyFallback();
-      if (this.status.state === 'running' && !this.status.gatewayReady) {
-        logger.info('Gateway subsystems ready (event received)');
-        this.setStatus({ gatewayReady: true });
-      }
+      this.markGatewayReady('event');
     });
   }
 
@@ -740,6 +741,8 @@ export class GatewayManager extends EventEmitter {
       this.reloadDebounceTimer = null;
     }
     this.clearGatewayReadyFallback();
+    this.clearGatewayReadyProbe();
+    this.gatewayReadyProbeInFlight = false;
   }
 
   private clearGatewayReadyFallback(): void {
@@ -749,15 +752,61 @@ export class GatewayManager extends EventEmitter {
     }
   }
 
+  private clearGatewayReadyProbe(): void {
+    if (this.gatewayReadyProbeTimer) {
+      clearTimeout(this.gatewayReadyProbeTimer);
+      this.gatewayReadyProbeTimer = null;
+    }
+  }
+
+  private markGatewayReady(source: 'event' | 'rpc-probe'): void {
+    this.clearGatewayReadyFallback();
+    this.clearGatewayReadyProbe();
+    this.gatewayReadyProbeInFlight = false;
+    if (this.status.state === 'running' && !this.status.gatewayReady) {
+      logger.info(`Gateway subsystems ready (${source})`);
+      this.setStatus({ gatewayReady: true });
+    }
+  }
+
   private scheduleGatewayReadyFallback(): void {
     this.clearGatewayReadyFallback();
     this.gatewayReadyFallbackTimer = setTimeout(() => {
       this.gatewayReadyFallbackTimer = null;
       if (this.status.state === 'running' && !this.status.gatewayReady) {
-        logger.info('Gateway ready fallback triggered (no gateway.ready event within timeout)');
-        this.setStatus({ gatewayReady: true });
+        logger.warn('Gateway ready event not received within timeout; continuing RPC readiness probes');
+        this.scheduleGatewayReadyProbe(GatewayManager.GATEWAY_READY_PROBE_INTERVAL_MS);
       }
     }, GatewayManager.GATEWAY_READY_FALLBACK_MS);
+  }
+
+  private scheduleGatewayReadyProbe(delayMs = GatewayManager.GATEWAY_READY_PROBE_INITIAL_DELAY_MS): void {
+    if (this.status.state !== 'running' || this.status.gatewayReady) return;
+    if (this.gatewayReadyProbeTimer || this.gatewayReadyProbeInFlight) return;
+    this.gatewayReadyProbeTimer = setTimeout(() => {
+      this.gatewayReadyProbeTimer = null;
+      void this.probeGatewayRpcReady();
+    }, delayMs);
+  }
+
+  private async probeGatewayRpcReady(): Promise<void> {
+    if (this.gatewayReadyProbeInFlight || this.status.state !== 'running' || this.status.gatewayReady) {
+      return;
+    }
+    this.gatewayReadyProbeInFlight = true;
+    try {
+      await this.sendRpc('sessions.list', {}, GatewayManager.GATEWAY_READY_PROBE_TIMEOUT_MS, {
+        bypassReadyGate: true,
+        recordDiagnostics: false,
+      });
+      this.markGatewayReady('rpc-probe');
+    } catch (error) {
+      logger.debug(`[gateway-ready] RPC readiness probe failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.gatewayReadyProbeInFlight = false;
+      this.scheduleGatewayReadyProbe(GatewayManager.GATEWAY_READY_PROBE_INTERVAL_MS);
+      return;
+    }
+    this.gatewayReadyProbeInFlight = false;
   }
 
   /**
@@ -765,6 +814,19 @@ export class GatewayManager extends EventEmitter {
    * Uses OpenClaw protocol format: { type: "req", id: "...", method: "...", params: {...} }
    */
   async rpc<T>(method: string, params?: unknown, timeoutMs = 30000): Promise<T> {
+    return await this.sendRpc<T>(method, params, timeoutMs);
+  }
+
+  private async sendRpc<T>(
+    method: string,
+    params?: unknown,
+    timeoutMs = 30000,
+    options: { bypassReadyGate?: boolean; recordDiagnostics?: boolean } = {},
+  ): Promise<T> {
+    if (!options.bypassReadyGate && this.status.state === 'running' && this.status.gatewayReady === false) {
+      throw new Error(`Gateway RPC unavailable during startup: ${method}`);
+    }
+
     return await new Promise<T>((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
         reject(new Error('Gateway not connected'));
@@ -799,10 +861,12 @@ export class GatewayManager extends EventEmitter {
         rejectPendingGatewayRequest(this.pendingRequests, id, new Error(`Failed to send RPC request: ${error}`));
       }
     }).then((result) => {
-      this.recordRpcSuccess();
+      if (options.recordDiagnostics !== false) {
+        this.recordRpcSuccess();
+      }
       return result;
     }).catch((error) => {
-      if (isTransportRpcFailure(error)) {
+      if (options.recordDiagnostics !== false && isTransportRpcFailure(error)) {
         this.recordRpcFailure(method);
       }
       throw error;
@@ -972,15 +1036,20 @@ export class GatewayManager extends EventEmitter {
           state: 'running',
           port,
           connectedAt: Date.now(),
+          gatewayReady: false,
         });
         this.startPing();
         this.scheduleGatewayReadyFallback();
+        this.scheduleGatewayReadyProbe();
       },
       onMessage: (message) => {
         this.handleMessage(message);
       },
       onCloseAfterHandshake: (closeCode) => {
         this.connectionMonitor.clear();
+        this.clearGatewayReadyFallback();
+        this.clearGatewayReadyProbe();
+        this.gatewayReadyProbeInFlight = false;
         this.recordSocketClose(closeCode);
         this.diagnostics.consecutiveHeartbeatMisses = 0;
         if (this.status.state === 'running') {

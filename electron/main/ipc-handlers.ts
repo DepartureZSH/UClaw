@@ -64,6 +64,7 @@ import {
   syncUpdatedProviderToRuntime,
 } from '../services/providers/provider-runtime-sync';
 import { validateApiKeyWithProvider } from '../services/providers/provider-validation';
+import { getKimiWebSearchStatus } from '../gateway/config-sync';
 import { appUpdater } from './updater';
 import { registerHostApiProxyHandlers } from './ipc/host-api-proxy';
 import {
@@ -1505,6 +1506,10 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
     const status = getOpenClawStatus();
     logger.info('openclaw:status IPC called', status);
     return status;
+  });
+
+  ipcMain.handle('openclaw:webSearchStatus', async () => {
+    return await getKimiWebSearchStatus();
   });
 
   // Check if OpenClaw is ready (package present)

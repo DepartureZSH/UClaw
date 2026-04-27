@@ -55,15 +55,22 @@ function buildRouteHandlers(): RouteHandler[] {
  * sufficient because browsers attach the Origin header but not a secret).
  */
 let hostApiToken: string = '';
+let hostApiPort: number = getPort('UCLAW_HOST_API');
 
 /** Retrieve the current Host API auth token (for use by IPC proxy). */
 export function getHostApiToken(): string {
   return hostApiToken;
 }
 
+/** Retrieve the actual Host API port, including fallback ports after EADDRINUSE. */
+export function getHostApiPort(): number {
+  return hostApiPort;
+}
+
 export function startHostApiServer(ctx: HostApiContext, port = getPort('UCLAW_HOST_API')): Server {
   // Generate a cryptographically random token for this session.
   hostApiToken = randomBytes(32).toString('hex');
+  hostApiPort = port;
 
   const server = createServer(async (req, res) => {
     try {
@@ -115,10 +122,28 @@ export function startHostApiServer(ctx: HostApiContext, port = getPort('UCLAW_HO
     }
   });
 
+  const envPortOverride = Boolean(process.env.UCLAW_PORT_UCLAW_HOST_API?.trim());
+  let listenAttempt = 0;
+  const maxFallbackAttempts = envPortOverride ? 0 : 20;
+  const listen = (nextPort: number): void => {
+    hostApiPort = nextPort;
+    server.listen(nextPort, '127.0.0.1');
+  };
+
   server.on('error', (error: NodeJS.ErrnoException) => {
+    if ((error.code === 'EACCES' || error.code === 'EADDRINUSE') && listenAttempt < maxFallbackAttempts) {
+      listenAttempt += 1;
+      const nextPort = port + listenAttempt;
+      logger.warn(
+        `Host API port ${hostApiPort} is unavailable (${error.code}); retrying on ${nextPort}.`,
+      );
+      setTimeout(() => listen(nextPort), 0);
+      return;
+    }
+
     if (error.code === 'EACCES' || error.code === 'EADDRINUSE') {
       logger.error(
-        `Host API server failed to bind port ${port}: ${error.message}. ` +
+        `Host API server failed to bind port ${hostApiPort}: ${error.message}. ` +
         'On Windows this is often caused by Hyper-V reserving the port range. ' +
         `Set UCLAW_PORT_UCLAW_HOST_API env var to override the default port.`,
       );
@@ -127,9 +152,15 @@ export function startHostApiServer(ctx: HostApiContext, port = getPort('UCLAW_HO
     }
   });
 
-  server.listen(port, '127.0.0.1', () => {
-    logger.info(`Host API server listening on http://127.0.0.1:${port}`);
+  server.on('listening', () => {
+    const address = server.address();
+    if (address && typeof address === 'object') {
+      hostApiPort = address.port;
+    }
+    logger.info(`Host API server listening on http://127.0.0.1:${hostApiPort}`);
   });
+
+  listen(port);
 
   return server;
 }

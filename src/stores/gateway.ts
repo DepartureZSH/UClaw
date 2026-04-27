@@ -110,6 +110,9 @@ function maybeLoadHistory(
   state: { loadHistory: (quiet?: boolean) => Promise<void> },
   force = false,
 ): void {
+  const { status } = useGatewayStore.getState();
+  if (status.gatewayReady === false) return;
+
   const now = Date.now();
   if (!force && now - lastLoadHistoryAt < LOAD_HISTORY_MIN_INTERVAL_MS) return;
   lastLoadHistoryAt = now;
@@ -267,8 +270,8 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
           unsubscribers.push(subscribeHostEvent<GatewayStatus>('gateway:status', (payload) => {
             set({ status: payload });
 
-            // Trigger cron repair when gateway becomes ready
-            if (!cronRepairTriggeredThisSession && payload.state === 'running') {
+            // Trigger cron repair only after the Gateway has accepted runtime RPCs.
+            if (!cronRepairTriggeredThisSession && payload.state === 'running' && payload.gatewayReady === true) {
               cronRepairTriggeredThisSession = true;
               // Fire-and-forget: fetch cron jobs to trigger repair logic in background
               import('./cron')
@@ -329,9 +332,13 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
               .then((result: unknown) => {
                 const latest = result as GatewayStatus;
                 const current = get().status;
-                if (latest.state !== current.state) {
+                if (
+                  latest.state !== current.state
+                  || latest.gatewayReady !== current.gatewayReady
+                  || latest.connectedAt !== current.connectedAt
+                ) {
                   console.info(
-                    `[gateway-store] reconciled stale state: ${current.state} → ${latest.state}`,
+                    `[gateway-store] reconciled stale state: ${current.state}/${String(current.gatewayReady)} → ${latest.state}/${String(latest.gatewayReady)}`,
                   );
                   set({ status: latest });
                 }

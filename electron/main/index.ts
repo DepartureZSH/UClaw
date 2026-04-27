@@ -41,7 +41,6 @@ import { createSignalQuitHandler } from './signal-quit';
 import { acquireProcessInstanceFileLock } from './process-instance-lock';
 import { getSetting } from '../utils/store';
 import { ensureBuiltinSkillsInstalled, ensurePreinstalledSkillsInstalled } from '../utils/skill-config';
-import { ensureAllBundledPluginsInstalled } from '../utils/plugin-install';
 import { startHostApiServer } from '../api/server';
 import { HostEventBus } from '../api/event-bus';
 import { deviceOAuthManager } from '../utils/device-oauth';
@@ -49,6 +48,7 @@ import { browserOAuthManager } from '../utils/browser-oauth';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
 import { syncAllProviderAuthToRuntime } from '../services/providers/provider-runtime-sync';
 import { buildPortableDiagnostics } from '../utils/portable-diagnostics';
+import { resolveStartupWorkspaceState } from './workspace-startup';
 
 // On Windows, set console output code page to UTF-8 (65001) early so that
 // CJK characters in gateway stderr logs are not garbled when displayed in
@@ -376,10 +376,20 @@ async function initialize(): Promise<void> {
   // Apply custom workspace dir before gateway starts.
   // UCLAW_WORKSPACE_DIR takes priority over UCLAW_PORTABLE_ROOT (see paths.ts).
   if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
-    const workspaceDir = await getSetting('workspaceDir');
-    if (workspaceDir) {
+    const { setupComplete, workspaceDir, resetReason, resetWorkspaceDir } = await resolveStartupWorkspaceState();
+    if (resetReason) {
+      logger.warn(
+        resetReason === 'missing-workspace'
+          ? `[workspace] Persisted workspace no longer exists; resetting setup state: ${resetWorkspaceDir ?? '(unknown)'}`
+          : '[workspace] Setup was marked complete without a workspace; resetting setup state',
+      );
+      delete process.env.UCLAW_WORKSPACE_DIR;
+    } else if (workspaceDir) {
       process.env.UCLAW_WORKSPACE_DIR = workspaceDir;
       logger.info(`[workspace] Using custom workspace: ${workspaceDir}`);
+    } else if (!setupComplete) {
+      delete process.env.UCLAW_WORKSPACE_DIR;
+      logger.info('[workspace] Setup incomplete; ignoring persisted workspace until setup applies it');
     }
   }
 
@@ -493,15 +503,6 @@ async function initialize(): Promise<void> {
     });
   }
 
-  // Pre-deploy/upgrade bundled OpenClaw plugins (dingtalk, wecom, feishu, wechat)
-  // to ~/.openclaw/extensions/ so they are always up-to-date after an app update.
-  // Note: qqbot was moved to a built-in channel in OpenClaw 3.31.
-  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
-    void ensureAllBundledPluginsInstalled().catch((error) => {
-      logger.warn('Failed to install/upgrade bundled plugins:', error);
-    });
-  }
-
   // Bridge gateway and host-side events before any auto-start logic runs, so
   // renderer subscribers observe the full startup lifecycle.
   gatewayManager.on('status', (status: { state: string }) => {
@@ -579,7 +580,8 @@ async function initialize(): Promise<void> {
 
   // Start Gateway automatically (this seeds missing bootstrap files with full templates)
   const gatewayAutoStart = await getSetting('gatewayAutoStart');
-  if (!isE2EMode && gatewayAutoStart && !portableDiagnostics.isAppTranslocated) {
+  const setupComplete = await getSetting('setupComplete');
+  if (!isE2EMode && setupComplete && gatewayAutoStart && !portableDiagnostics.isAppTranslocated) {
     try {
       await syncAllProviderAuthToRuntime();
       logger.debug('Auto-starting Gateway...');
@@ -593,6 +595,8 @@ async function initialize(): Promise<void> {
     logger.warn('Gateway auto-start skipped because macOS AppTranslocation is active');
   } else if (isE2EMode) {
     logger.info('Gateway auto-start skipped in E2E mode');
+  } else if (!setupComplete) {
+    logger.info('Gateway auto-start skipped because setup is incomplete');
   } else {
     logger.info('Gateway auto-start disabled in settings');
   }

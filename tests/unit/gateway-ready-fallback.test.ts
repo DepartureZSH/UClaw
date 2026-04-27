@@ -72,7 +72,7 @@ describe('GatewayManager gatewayReady fallback', () => {
     expect(readyUpdate).toBeDefined();
   });
 
-  it('auto-sets gatewayReady=true after fallback timeout if no event received', async () => {
+  it('keeps gatewayReady=false after fallback timeout if RPC readiness has not succeeded', async () => {
     vi.resetModules();
     const { GatewayManager } = await import('@electron/gateway/manager');
     const manager = new GatewayManager();
@@ -93,10 +93,49 @@ describe('GatewayManager gatewayReady fallback', () => {
     vi.advanceTimersByTime(29_000);
     expect(statusUpdates.find((u) => u.gatewayReady === true)).toBeUndefined();
 
-    // After 30s fallback timeout
+    // After 30s fallback timeout, the manager should continue probing instead
+    // of marking runtime RPCs ready blindly.
     vi.advanceTimersByTime(2_000);
-    const readyUpdate = statusUpdates.find((u) => u.gatewayReady === true);
-    expect(readyUpdate).toBeDefined();
+    expect(statusUpdates.find((u) => u.gatewayReady === true)).toBeUndefined();
+  });
+
+  it('sets gatewayReady=true when the RPC readiness probe succeeds', async () => {
+    vi.resetModules();
+    const { GatewayManager } = await import('@electron/gateway/manager');
+    const manager = new GatewayManager();
+
+    const ws = {
+      readyState: 1,
+      send: vi.fn(),
+      ping: vi.fn(),
+      terminate: vi.fn(),
+      on: vi.fn(),
+    };
+    (manager as unknown as { ws: typeof ws }).ws = ws;
+
+    const stateController = (manager as unknown as { stateController: { setStatus: (u: Record<string, unknown>) => void } }).stateController;
+    stateController.setStatus({ state: 'running', connectedAt: Date.now(), gatewayReady: false });
+
+    const statusUpdates: Array<{ gatewayReady?: boolean }> = [];
+    manager.on('status', (status: { gatewayReady?: boolean }) => {
+      statusUpdates.push({ gatewayReady: status.gatewayReady });
+    });
+
+    const probePromise = (manager as unknown as { probeGatewayRpcReady: () => Promise<void> }).probeGatewayRpcReady();
+    const requestId = Array.from(
+      (manager as unknown as { pendingRequests: Map<string, unknown> }).pendingRequests.keys(),
+    )[0];
+    (manager as unknown as { handleMessage: (message: unknown) => void }).handleMessage({
+      type: 'res',
+      id: requestId,
+      ok: true,
+      payload: { messages: [] },
+    });
+    await probePromise;
+
+    expect(ws.send).toHaveBeenCalled();
+    expect(JSON.parse(ws.send.mock.calls[0]?.[0] as string).method).toBe('sessions.list');
+    expect(statusUpdates.find((u) => u.gatewayReady === true)).toBeDefined();
   });
 
   it('cancels fallback timer when gateway:ready event arrives first', async () => {

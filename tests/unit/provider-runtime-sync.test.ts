@@ -134,6 +134,14 @@ describe('provider-runtime-sync refresh strategy', () => {
     expect(gateway.debouncedRestart).not.toHaveBeenCalled();
   });
 
+  it('does not start or reload Gateway after saving provider config while stopped', async () => {
+    const gateway = createGateway('stopped');
+    await syncSavedProviderToRuntime(createProvider(), undefined, gateway as GatewayManager);
+
+    expect(gateway.debouncedReload).not.toHaveBeenCalled();
+    expect(gateway.debouncedRestart).not.toHaveBeenCalled();
+  });
+
   it('uses debouncedRestart after deleting provider config', async () => {
     const gateway = createGateway('running');
     await syncDeletedProviderToRuntime(createProvider(), 'moonshot', gateway as GatewayManager);

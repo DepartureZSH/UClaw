@@ -29,6 +29,7 @@ const electronAPI = {
         // OpenClaw
         'openclaw:status',
         'openclaw:isReady',
+        'openclaw:webSearchStatus',
         // Shell
         'shell:openExternal',
         'shell:showItemInFolder',

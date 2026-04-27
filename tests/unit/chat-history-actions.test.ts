@@ -287,6 +287,7 @@ describe('chat history actions', () => {
     vi.useFakeTimers();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { createHistoryActions } = await import('@/stores/chat/history-actions');
+    const { CHAT_HISTORY_STARTUP_RETRY_DELAYS_MS } = await import('@/stores/chat/history-startup-retry');
     const h = makeHarness({
       currentSessionKey: 'agent:main:main',
     });
@@ -301,7 +302,7 @@ describe('chat history actions', () => {
     await vi.runAllTimersAsync();
     await loadPromise;
 
-    expect(invokeIpcMock).toHaveBeenCalledTimes(5);
+    expect(invokeIpcMock).toHaveBeenCalledTimes(CHAT_HISTORY_STARTUP_RETRY_DELAYS_MS.length + 1);
     expect(h.read().messages).toEqual([]);
     expect(h.read().error).toBe('RPC timeout: chat.history');
     expect(warnSpy).toHaveBeenCalledWith(

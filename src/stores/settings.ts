@@ -61,8 +61,8 @@ interface SettingsState {
   setAutoDownloadUpdate: (value: boolean) => void;
   setSidebarCollapsed: (value: boolean) => void;
   setDevModeUnlocked: (value: boolean) => void;
-  markSetupComplete: () => void;
-  resetSetup: () => void;
+  markSetupComplete: () => Promise<void>;
+  resetSetup: () => Promise<void>;
   resetSettings: () => void;
 }
 
@@ -87,6 +87,25 @@ const defaultSettings = {
   devModeUnlocked: false,
   setupComplete: false,
 };
+
+export const SETTINGS_PERSIST_VERSION = 1;
+
+export function migrateSettingsState(persistedState: unknown, version: number): unknown {
+  if (!persistedState || typeof persistedState !== 'object' || Array.isArray(persistedState)) {
+    return persistedState;
+  }
+
+  const state = persistedState as Partial<SettingsState>;
+
+  if (version < SETTINGS_PERSIST_VERSION) {
+    return {
+      ...state,
+      setupComplete: false,
+    };
+  }
+
+  return state;
+}
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -175,12 +194,26 @@ export const useSettingsStore = create<SettingsState>()(
           body: JSON.stringify({ value: devModeUnlocked }),
         }).catch(() => { });
       },
-      markSetupComplete: () => set({ setupComplete: true }),
-      resetSetup: () => set({ setupComplete: false }),
+      markSetupComplete: async () => {
+        set({ setupComplete: true });
+        await hostApiFetch('/api/settings/setupComplete', {
+          method: 'PUT',
+          body: JSON.stringify({ value: true }),
+        }).catch(() => { });
+      },
+      resetSetup: async () => {
+        set({ setupComplete: false });
+        await hostApiFetch('/api/settings/setupComplete', {
+          method: 'PUT',
+          body: JSON.stringify({ value: false }),
+        }).catch(() => { });
+      },
       resetSettings: () => set(defaultSettings),
     }),
     {
       name: 'uclaw-settings',
+      version: SETTINGS_PERSIST_VERSION,
+      migrate: migrateSettingsState,
     }
   )
 );
