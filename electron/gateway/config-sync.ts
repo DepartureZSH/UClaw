@@ -112,10 +112,81 @@ export function isKimiWebSearchEnabled(config: Record<string, unknown> | null | 
 export function getDefaultModelProviderKey(config: Record<string, unknown> | null | undefined): string | undefined {
   const agents = readObject(config?.agents);
   const defaults = readObject(agents?.defaults);
-  const model = readObject(defaults?.model);
-  const primary = typeof model?.primary === 'string' ? model.primary.trim() : '';
+  const modelConfig = defaults?.model;
+  const model = readObject(modelConfig);
+  const primary = typeof modelConfig === 'string'
+    ? modelConfig.trim()
+    : (typeof model?.primary === 'string' ? model.primary.trim() : '');
   const slashIndex = primary.indexOf('/');
   return slashIndex > 0 ? primary.slice(0, slashIndex) : undefined;
+}
+
+function normalizeProviderBaseUrl(value: unknown): string | undefined {
+  return typeof value === 'string' ? value.trim().replace(/\/+$/, '') : undefined;
+}
+
+function getKimiWebSearchConfig(config: Record<string, unknown> | null | undefined): Record<string, unknown> | undefined {
+  const plugins = readObject(config?.plugins);
+  const entries = readObject(plugins?.entries);
+  const moonshot = readObject(entries?.moonshot);
+  const moonshotConfig = readObject(moonshot?.config);
+  const webSearch = readObject(moonshotConfig?.webSearch);
+  return webSearch ?? undefined;
+}
+
+export function getKimiWebSearchProviderCandidates(
+  config: Record<string, unknown> | null | undefined,
+): string[] {
+  const candidates: string[] = [];
+  const addCandidate = (provider: string | undefined): void => {
+    const normalized = provider?.trim();
+    if (normalized && !candidates.includes(normalized)) {
+      candidates.push(normalized);
+    }
+  };
+
+  addCandidate(getDefaultModelProviderKey(config));
+
+  const webSearch = getKimiWebSearchConfig(config);
+  const webSearchModel = typeof webSearch?.model === 'string' ? webSearch.model.trim() : '';
+  const webSearchBaseUrl = normalizeProviderBaseUrl(webSearch?.baseUrl);
+  const models = readObject(config?.models);
+  const providers = readObject(models?.providers);
+
+  if (providers) {
+    for (const [providerKey, providerConfig] of Object.entries(providers)) {
+      const provider = readObject(providerConfig);
+      if (!provider) continue;
+
+      const providerBaseUrl = normalizeProviderBaseUrl(provider.baseUrl);
+      const providerModels = Array.isArray(provider.models) ? provider.models : [];
+      const hasWebSearchModel = Boolean(webSearchModel && providerModels.some((model) => {
+        const modelId = typeof (model as Record<string, unknown>)?.id === 'string'
+          ? ((model as Record<string, unknown>).id as string).trim()
+          : '';
+        return modelId === webSearchModel || `${providerKey}/${modelId}` === webSearchModel;
+      }));
+
+      if (
+        (webSearchBaseUrl && providerBaseUrl === webSearchBaseUrl)
+        || hasWebSearchModel
+      ) {
+        addCandidate(providerKey);
+      }
+    }
+
+    // Reused workspaces may only have the provider key in auth-profiles.json,
+    // while webSearch stores a bare model/baseUrl. Keep this as a last resort
+    // so Kimi search can reuse an existing OpenAI-compatible provider key.
+    for (const providerKey of Object.keys(providers)) {
+      if (providerKey !== 'moonshot') {
+        addCandidate(providerKey);
+      }
+    }
+    addCandidate('moonshot');
+  }
+
+  return candidates;
 }
 
 export async function resolveKimiWebSearchApiKeyAlias(
@@ -135,12 +206,12 @@ export async function resolveKimiWebSearchApiKeyAlias(
     return envKey;
   }
 
-  const defaultProviderKey = getDefaultModelProviderKey(config);
-  if (!defaultProviderKey) {
+  const providerCandidates = getKimiWebSearchProviderCandidates(config);
+  if (providerCandidates.length === 0) {
     return undefined;
   }
 
-  return await getOpenClawRuntimeApiKey([defaultProviderKey]) ?? undefined;
+  return await getOpenClawRuntimeApiKey(providerCandidates) ?? undefined;
 }
 
 function buildBundledPluginSources(pluginDirName: string): string[] {
