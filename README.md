@@ -41,30 +41,30 @@ Whether you're automating workflows, managing AI-powered channels, or scheduling
 UClaw comes pre-configured with best-practice model providers and natively supports Windows as well as multi-language settings. Of course, you can also fine-tune advanced configurations via **Settings → Advanced → Developer Mode**.
 
 ---
-## Screenshot
+## Screenshots
 
 <p align="center">
-  <img src="resources/screenshot/en/chat.png" style="width: 100%; height: auto;">
+  <img src="resources/screenshot/zh/chat.png" alt="UClaw chat interface" style="width: 100%; height: auto;">
 </p>
 
 <p align="center">
-  <img src="resources/screenshot/en/cron.png" style="width: 100%; height: auto;">
+  <img src="resources/screenshot/zh/cron.png" alt="UClaw scheduled tasks" style="width: 100%; height: auto;">
 </p>
 
 <p align="center">
-  <img src="resources/screenshot/en/skills.png" style="width: 100%; height: auto;">
+  <img src="resources/screenshot/zh/skills.png" alt="UClaw skills page" style="width: 100%; height: auto;">
 </p>
 
 <p align="center">
-  <img src="resources/screenshot/en/channels.png" style="width: 100%; height: auto;">
+  <img src="resources/screenshot/zh/channels.png" alt="UClaw channels page" style="width: 100%; height: auto;">
 </p>
 
 <p align="center">
-  <img src="resources/screenshot/en/models.png" style="width: 100%; height: auto;">
+  <img src="resources/screenshot/zh/models.png" alt="UClaw models page" style="width: 100%; height: auto;">
 </p>
 
 <p align="center">
-  <img src="resources/screenshot/en/settings.png" style="width: 100%; height: auto;">
+  <img src="resources/screenshot/zh/settings.png" alt="UClaw settings page" style="width: 100%; height: auto;">
 </p>
 
 ---
