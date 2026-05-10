@@ -141,7 +141,9 @@ nsis:
   license: LICENSE
   include: scripts/installer.nsh
   installerIcon: resources/icons/icon.ico
-  uninstallerIcon: resources/icons/icon.ico
+  # Do not emit a standalone $INSTDIR\uninstallerIcon.ico. On removable or
+  # aggressively scanned drives this file can be locked by the old install and
+  # make NSIS abort before the new app is copied.
 
 # Linux Configuration
 linux:

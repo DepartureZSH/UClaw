@@ -66,6 +66,11 @@
       nsExec::ExecToStack 'taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}"'
       Pop $0
       Pop $1
+      ; Legacy fork builds may still be running under the old ClawX executable
+      ; name and can keep files in the chosen install directory locked.
+      nsExec::ExecToStack 'taskkill /F /T /IM ClawX.exe'
+      Pop $0
+      Pop $1
     ${endIf}
 
     # Also kill well-known child processes that may have detached from the
@@ -96,6 +101,9 @@
   ; in a different directory than $INSTDIR (e.g., per-machine -> per-user migration).
   ; taskkill is name-based and catches processes regardless of their install location.
   nsExec::ExecToStack 'taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}"'
+  Pop $0
+  Pop $1
+  nsExec::ExecToStack 'taskkill /F /T /IM ClawX.exe'
   Pop $0
   Pop $1
   nsExec::ExecToStack 'taskkill /F /IM openclaw-gateway.exe'
@@ -154,6 +162,16 @@
   _stale_moved:
     CreateDirectory "$INSTDIR"
   _instdir_clean:
+
+  ; Some older installers leave icon helper files directly in $INSTDIR.  These
+  ; are small, but they are a common failure point on USB/removable drives when
+  ; Windows Search or antivirus briefly keeps the old file read-only/locked.
+  ; Clear attributes and remove them before electron-builder writes registry
+  ; and uninstall metadata.
+  SetFileAttributes "$INSTDIR\installerIcon.ico" NORMAL
+  Delete "$INSTDIR\installerIcon.ico"
+  SetFileAttributes "$INSTDIR\uninstallerIcon.ico" NORMAL
+  Delete "$INSTDIR\uninstallerIcon.ico"
 
   ; Pre-emptively remove the old uninstall registry entry so that
   ; electron-builder's uninstallOldVersion skips the old uninstaller entirely.
