@@ -23,6 +23,10 @@ Standard dev commands are in `package.json` scripts and `README.md`. Key ones:
 | E2E tests (Playwright) | `pnpm run test:e2e` |
 | Build frontend only | `pnpm run build:vite` |
 
+### Project-local skills
+
+- GitHub release and packaging operations: use `.codex/skills/uclaw-github-release/SKILL.md` when working on the independent `DepartureZSH/UClaw` repository, release tags, GitHub Actions packaging workflows, or release troubleshooting.
+
 ### Non-obvious caveats
 
 - **pnpm version**: The exact pnpm version is pinned via `packageManager` in `package.json`. Use `corepack enable && corepack prepare` to activate the correct version before installing.
