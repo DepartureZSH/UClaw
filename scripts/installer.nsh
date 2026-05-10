@@ -71,6 +71,9 @@
       nsExec::ExecToStack 'taskkill /F /T /IM ClawX.exe'
       Pop $0
       Pop $1
+      nsExec::ExecToStack 'taskkill /F /T /IM "Uninstall UClaw.exe"'
+      Pop $0
+      Pop $1
     ${endIf}
 
     # Also kill well-known child processes that may have detached from the
@@ -104,6 +107,9 @@
   Pop $0
   Pop $1
   nsExec::ExecToStack 'taskkill /F /T /IM ClawX.exe'
+  Pop $0
+  Pop $1
+  nsExec::ExecToStack 'taskkill /F /T /IM "Uninstall UClaw.exe"'
   Pop $0
   Pop $1
   nsExec::ExecToStack 'taskkill /F /IM openclaw-gateway.exe'
@@ -172,6 +178,10 @@
   Delete "$INSTDIR\installerIcon.ico"
   SetFileAttributes "$INSTDIR\uninstallerIcon.ico" NORMAL
   Delete "$INSTDIR\uninstallerIcon.ico"
+  SetFileAttributes "$INSTDIR\Uninstall UClaw.exe" NORMAL
+  Delete "$INSTDIR\Uninstall UClaw.exe"
+  SetFileAttributes "$INSTDIR\Uninstall ClawX.exe" NORMAL
+  Delete "$INSTDIR\Uninstall ClawX.exe"
 
   ; Pre-emptively remove the old uninstall registry entry so that
   ; electron-builder's uninstallOldVersion skips the old uninstaller entirely.

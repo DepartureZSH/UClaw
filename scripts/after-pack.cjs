@@ -798,5 +798,24 @@ exports.default = async function afterPack(context) {
         console.log('[after-pack] ⚡ extractAppPackage.nsh already patched (idempotent skip).');
       }
     }
+
+    const commonNsh = join(
+      __dirname, '..', 'node_modules', 'app-builder-lib',
+      'templates', 'nsis', 'common.nsh'
+    );
+    if (existsSync(commonNsh)) {
+      const { readFileSync: readFS, writeFileSync: writeFS } = require('fs');
+      const original = readFS(commonNsh, 'utf8');
+      const from = '!define UNINSTALL_FILENAME "Uninstall ${PRODUCT_FILENAME}.exe"';
+      const to = '!define UNINSTALL_FILENAME "Uninstall ${PRODUCT_FILENAME} ${VERSION}.exe"';
+      if (original.includes(from)) {
+        writeFS(commonNsh, original.replace(from, to), 'utf8');
+        console.log('[after-pack] 🩹 Patched NSIS uninstaller filename to include version.');
+      } else if (original.includes(to)) {
+        console.log('[after-pack] 🩹 NSIS uninstaller filename already versioned (idempotent skip).');
+      } else {
+        console.warn('[after-pack] ⚠️  common.nsh uninstaller filename pattern not found — template may have changed.');
+      }
+    }
   }
 };
