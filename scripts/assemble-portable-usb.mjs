@@ -12,17 +12,17 @@
  *     macos-arm64/      ← macOS arm64 zip extracted here
  *     macos-x64/        ← macOS x64 zip extracted here
  *     linux/            ← Linux zip extracted here
- *     data/             ← shared user data (triggers portable mode)
+ *     data/             ← shared data root
  *
- * Each platform executable walks up its directory tree to find data/,
- * so all platforms share the same settings and OpenClaw config.
+ * Launch scripts pass --uclaw-data-root explicitly so all platforms share the
+ * same settings and OpenClaw config without auto-detecting directories.
  *
  * Usage: node scripts/assemble-portable-usb.mjs [--out <dir>]
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
-import { join, resolve, basename } from 'node:path';
+import { chmodSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -63,6 +63,53 @@ function extractZip(zipPath, destDir) {
   }
 }
 
+function writeLaunchers(dataDir) {
+  writeFileSync(join(OUT_DIR, 'Launch UClaw Windows.cmd'), [
+    '@echo off',
+    'set "SCRIPT_DIR=%~dp0"',
+    'set "DATA_ROOT=%SCRIPT_DIR%data"',
+    'start "" "%SCRIPT_DIR%windows\\UClaw.exe" --uclaw-data-root "%DATA_ROOT%"',
+    '',
+  ].join('\r\n'), 'utf8');
+
+  const linuxLauncher = join(OUT_DIR, 'launch-uclaw-linux.sh');
+  writeFileSync(linuxLauncher, [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"',
+    'DATA_ROOT="$SCRIPT_DIR/data"',
+    'for candidate in "$SCRIPT_DIR/linux/uclaw" "$SCRIPT_DIR/linux/UClaw" "$SCRIPT_DIR/linux/UClaw.AppImage"; do',
+    '  if [[ -x "$candidate" || -f "$candidate" ]]; then',
+    '    exec "$candidate" --uclaw-data-root "$DATA_ROOT"',
+    '  fi',
+    'done',
+    'echo "Linux UClaw executable was not found."',
+    'exit 1',
+    '',
+  ].join('\n'), 'utf8');
+  chmodSync(linuxLauncher, 0o755);
+
+  const macLauncher = join(OUT_DIR, 'launch-uclaw-macos.sh');
+  writeFileSync(macLauncher, [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"',
+    'DATA_ROOT="$SCRIPT_DIR/data"',
+    'for candidate in "$SCRIPT_DIR/macos-arm64/UClaw.app" "$SCRIPT_DIR/macos-x64/UClaw.app" "$SCRIPT_DIR/UClaw.app"; do',
+    '  if [[ -d "$candidate" ]]; then',
+    '    open "$candidate" --args --uclaw-data-root "$DATA_ROOT"',
+    '    exit 0',
+    '  fi',
+    'done',
+    'echo "UClaw.app was not found."',
+    'exit 1',
+    '',
+  ].join('\n'), 'utf8');
+  chmodSync(macLauncher, 0o755);
+
+  console.log(`  launchers use data root: ${dataDir}`);
+}
+
 function main() {
   const zips = findZips();
   if (zips.length === 0) {
@@ -92,10 +139,11 @@ function main() {
     process.exit(1);
   }
 
-  // Create shared data/ directory (presence triggers portable mode in all executables)
+  // Create shared data/ directory and launchers that pass it explicitly.
   const dataDir = join(OUT_DIR, 'data');
   mkdirSync(dataDir, { recursive: true });
-  console.log(`\n  created  data/  (shared user data directory)`);
+  writeLaunchers(dataDir);
+  console.log(`\n  created  data/  (shared data root)`);
 
   console.log(`\nDone. USB image ready at:\n  ${OUT_DIR}\n`);
   console.log('Platform coverage:');

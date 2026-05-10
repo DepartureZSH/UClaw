@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { join } from 'path';
 import { homedir } from 'os';
 import { existsSync, mkdirSync, readFileSync, realpathSync } from 'fs';
+import { getConfiguredDataRoot } from './data-root';
 
 const require = createRequire(import.meta.url);
 
@@ -24,7 +25,7 @@ function getElectronApp() {
     return (require('electron') as typeof import('electron')).app;
   }
 
-  const fallbackUserData = process.env.UCLAW_USER_DATA_DIR?.trim() || join(homedir(), '.uclaw');
+  const fallbackUserData = join(getConfiguredDataRoot(), 'uclaw');
   const fallbackAppPath = process.cwd();
   const fallbackApp: ElectronAppLike = {
     isPackaged: false,
@@ -41,6 +42,10 @@ function getElectronApp() {
  * Expand ~ to home directory
  */
 export function expandPath(path: string): string {
+  if (path === '~/.openclaw' || path.startsWith('~/.openclaw/') || path.startsWith('~\\.openclaw\\')) {
+    const suffix = path.slice('~/.openclaw'.length).replace(/^[\\/]/, '');
+    return suffix ? join(getOpenClawConfigDir(), suffix) : getOpenClawConfigDir();
+  }
   if (path.startsWith('~')) {
     return path.replace('~', homedir());
   }
@@ -49,15 +54,13 @@ export function expandPath(path: string): string {
 
 /**
  * Get OpenClaw config directory.
- * Priority: explicit workspace dir → portable USB mode → ~/.openclaw (default).
- * Workspace dir wins so that a user-selected path always overrides auto-detection.
+ * Priority: explicit workspace dir → unified data root.
+ * Workspace dir wins so that a user-selected path always overrides the default.
  */
 export function getOpenClawConfigDir(): string {
   const workspaceDir = process.env.UCLAW_WORKSPACE_DIR?.trim();
   if (workspaceDir) return join(workspaceDir, '.openclaw');
-  const portableRoot = process.env.UCLAW_PORTABLE_ROOT?.trim();
-  if (portableRoot) return join(portableRoot, '.openclaw');
-  return join(homedir(), '.openclaw');
+  return join(getConfiguredDataRoot(), '.openclaw');
 }
 
 /**
@@ -69,27 +72,23 @@ export function getOpenClawSkillsDir(): string {
 
 /**
  * Get UClaw config directory.
- * In portable USB mode (UCLAW_PORTABLE_ROOT is set), resolves to
- * <portable-root>/uclaw instead of ~/.uclaw.
  */
 export function getUClawConfigDir(): string {
-  const portableRoot = process.env.UCLAW_PORTABLE_ROOT;
-  if (portableRoot) return join(portableRoot, 'uclaw');
-  return join(homedir(), '.uclaw');
+  return join(getConfiguredDataRoot(), 'uclaw');
 }
 
 /**
  * Get UClaw logs directory
  */
 export function getLogsDir(): string {
-  return join(getElectronApp().getPath('userData'), 'logs');
+  return join(getUClawConfigDir(), 'logs');
 }
 
 /**
  * Get UClaw data directory
  */
 export function getDataDir(): string {
-  return getElectronApp().getPath('userData');
+  return getUClawConfigDir();
 }
 
 /**

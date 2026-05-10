@@ -35,6 +35,7 @@ describe('wechat login utility', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
     vi.resetModules();
+    process.env.UCLAW_DATA_ROOT = testHome;
     await rm(testHome, { recursive: true, force: true });
   });
 

@@ -70,11 +70,16 @@ export async function waitForGatewayReady(options: {
   getProcessExitCode: () => number | null;
   retries?: number;
   intervalMs?: number;
+  timeoutMs?: number;
+  probeTimeoutMs?: number;
 }): Promise<void> {
   const retries = options.retries ?? 2400;
   const intervalMs = options.intervalMs ?? 200;
+  const timeoutMs = options.timeoutMs ?? retries * intervalMs;
+  const probeTimeoutMs = options.probeTimeoutMs ?? 1500;
+  const start = Date.now();
 
-  for (let i = 0; i < retries; i++) {
+  for (let i = 0; i < retries && Date.now() - start < timeoutMs; i++) {
     const exitCode = options.getProcessExitCode();
     if (exitCode !== null) {
       logger.error(`Gateway process exited before ready (code=${exitCode})`);
@@ -82,7 +87,7 @@ export async function waitForGatewayReady(options: {
     }
 
     try {
-      const ready = await probeGatewayReady(options.port, 1500);
+      const ready = await probeGatewayReady(options.port, probeTimeoutMs);
       if (ready) {
         logger.debug(`Gateway ready after ${i + 1} attempt(s)`);
         return;
@@ -98,8 +103,8 @@ export async function waitForGatewayReady(options: {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 
-  logger.error(`Gateway failed to become ready after ${retries} attempts on port ${options.port}`);
-  throw new Error(`Gateway failed to start after ${retries} retries (port ${options.port})`);
+  logger.error(`Gateway failed to become ready after ${timeoutMs}ms on port ${options.port}`);
+  throw new Error(`Gateway failed to start after ${timeoutMs}ms (port ${options.port})`);
 }
 
 export function buildGatewayConnectFrame(options: {

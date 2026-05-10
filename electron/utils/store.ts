@@ -6,6 +6,7 @@
 import { randomBytes } from 'crypto';
 import { app } from 'electron';
 import { resolveSupportedLanguage } from '../../shared/language';
+import type { StartupConfigSettings } from './startup-config';
 
 // Lazy-load electron-store (ESM module)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,6 +54,7 @@ export interface AppSettings {
 
   // Setup
   setupComplete: boolean;
+  startup: StartupConfigSettings;
 
   // UI State
   sidebarCollapsed: boolean;
@@ -78,17 +80,13 @@ function getSystemLocale(): string {
 }
 
 function createDefaultSettings(): AppSettings {
-  // In portable USB mode all network-touching defaults are disabled so the
-  // app works fully offline and leaves no footprint on the host machine.
-  const isPortable = !!process.env.UCLAW_PORTABLE_ROOT;
-
   return {
     // General
     theme: 'system',
     language: resolveSupportedLanguage(getSystemLocale()),
     startMinimized: false,
-    launchAtStartup: false,             // never auto-start from USB
-    telemetryEnabled: !isPortable,
+    launchAtStartup: false,
+    telemetryEnabled: true,
     machineId: '',
     hasReportedInstall: false,
 
@@ -105,7 +103,7 @@ function createDefaultSettings(): AppSettings {
 
     // Update
     updateChannel: 'stable',
-    autoCheckUpdate: !isPortable,
+    autoCheckUpdate: true,
     autoDownloadUpdate: false,
     skippedVersions: [],
 
@@ -114,6 +112,7 @@ function createDefaultSettings(): AppSettings {
 
     // Setup
     setupComplete: false,
+    startup: {},
 
     // UI State
     sidebarCollapsed: false,

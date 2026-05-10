@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { stripSystemdSupervisorEnv } from '@electron/gateway/config-sync-env';
 
 describe('stripSystemdSupervisorEnv', () => {
@@ -64,6 +67,30 @@ describe('kimi web-search API key alias resolution', () => {
       getOpenClawRuntimeApiKey: runtimeApiKey,
       sanitizeOpenClawConfig: vi.fn(),
     }));
+  });
+
+  it('backs up and reports corrupt openclaw.json instead of overwriting it', async () => {
+    const configDir = await mkdtemp(join(tmpdir(), 'uclaw-corrupt-openclaw-'));
+    try {
+      const configPath = join(configDir, 'openclaw.json');
+      await writeFile(configPath, '{"broken":', 'utf8');
+
+      vi.doMock('@electron/utils/paths', () => ({
+        getOpenClawDir: () => '/tmp/openclaw',
+        getOpenClawEntryPath: () => '/tmp/openclaw/dist/cli.js',
+        isOpenClawPresent: () => true,
+        getOpenClawConfigDir: () => configDir,
+      }));
+
+      const { readGatewayOpenClawConfig } = await import('@electron/gateway/config-sync');
+      await expect(readGatewayOpenClawConfig()).rejects.toThrow(`JSON parse failed for ${configPath}`);
+
+      expect((await readFile(configPath, 'utf8')).trim()).toBe('{"broken":');
+      const files = await readdir(configDir);
+      expect(files.some((file) => file.startsWith('openclaw.json.corrupt.'))).toBe(true);
+    } finally {
+      await rm(configDir, { recursive: true, force: true });
+    }
   });
 
   it('detects kimi web search from moonshot plugin config', async () => {

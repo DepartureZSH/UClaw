@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UClaw 使用说明</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --panel-soft: #eef4ff;
+        --text: #172033;
+        --muted: #637083;
+        --line: #dfe5ee;
+        --accent: #0b6fcb;
+        --accent-strong: #074f99;
+        --success: #12805c;
+        --warning: #9a6500;
+        --danger: #b42318;
+        --shadow: 0 18px 50px rgba(23, 32, 51, 0.12);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.65;
+      }
+
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      a:hover {
+        color: var(--accent-strong);
+        text-decoration: underline;
+      }
+
+      .shell {
+        width: min(1160px, calc(100% - 40px));
+        margin: 0 auto;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        border-bottom: 1px solid rgba(223, 229, 238, 0.9);
+        background: rgba(246, 247, 251, 0.92);
+        backdrop-filter: blur(14px);
+      }
+
+      .topbar-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        min-height: 68px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 190px;
+        color: var(--text);
+        font-weight: 760;
+        letter-spacing: 0;
+      }
+
+      .brand img {
+        width: 38px;
+        height: 38px;
+      }
+
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+
+      .nav a {
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 14px;
+        padding: 8px 10px;
+        text-decoration: none;
+      }
+
+      .nav a:hover {
+        background: #e9eef7;
+        color: var(--text);
+      }
+
+      .hero {
+        padding: 70px 0 42px;
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 0.86fr) minmax(360px, 1.14fr);
+        align-items: center;
+        gap: 42px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid #bdd4f3;
+        border-radius: 999px;
+        background: #eaf3ff;
+        color: #184d83;
+        font-size: 13px;
+        font-weight: 650;
+        padding: 7px 12px;
+      }
+
+      h1,
+      h2,
+      h3 {
+        line-height: 1.18;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        margin: 20px 0 16px;
+        font-size: clamp(38px, 5vw, 68px);
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        font-size: 30px;
+      }
+
+      h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      p {
+        margin: 0 0 14px;
+      }
+
+      ul,
+      ol {
+        margin: 0;
+        padding-left: 22px;
+      }
+
+      li {
+        margin: 6px 0;
+      }
+
+      .lead {
+        color: var(--muted);
+        font-size: 18px;
+        max-width: 60ch;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 22px;
+      }
+
+      .pill {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 13px;
+        padding: 6px 10px;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 26px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--panel);
+        color: var(--text);
+        font-weight: 700;
+        padding: 9px 14px;
+        text-decoration: none;
+      }
+
+      .button.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .button:hover {
+        text-decoration: none;
+        transform: translateY(-1px);
+      }
+
+      .hero-shot {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .hero-shot img,
+      .screenshot img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .hero-shot figcaption,
+      .screenshot figcaption {
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+        padding: 10px 14px;
+      }
+
+      main {
+        padding: 10px 0 80px;
+      }
+
+      section {
+        scroll-margin-top: 86px;
+        padding: 46px 0;
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(0, 0.52fr) minmax(0, 0.48fr);
+        gap: 30px;
+        margin-bottom: 22px;
+      }
+
+      .section-head p {
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .card,
+      .step,
+      .note {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .card,
+      .step {
+        padding: 20px;
+      }
+
+      .card p,
+      .step p,
+      .note p {
+        color: var(--muted);
+      }
+
+      .step-number {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--panel-soft);
+        color: var(--accent-strong);
+        font-weight: 800;
+        margin-bottom: 12px;
+      }
+
+      .note {
+        display: grid;
+        grid-template-columns: 6px minmax(0, 1fr);
+        overflow: hidden;
+      }
+
+      .note::before {
+        content: "";
+        background: var(--accent);
+      }
+
+      .note.warning::before {
+        background: var(--warning);
+      }
+
+      .note.success::before {
+        background: var(--success);
+      }
+
+      .note.danger::before {
+        background: var(--danger);
+      }
+
+      .note-body {
+        padding: 16px 18px;
+      }
+
+      .screenshot {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--panel);
+        box-shadow: 0 12px 34px rgba(23, 32, 51, 0.08);
+        overflow: hidden;
+        margin: 18px 0 0;
+      }
+
+      .workflow {
+        counter-reset: workflow;
+      }
+
+      .workflow li {
+        position: relative;
+        list-style: none;
+        border-left: 2px solid #c7d6ea;
+        padding: 0 0 22px 28px;
+      }
+
+      .workflow li:last-child {
+        border-left-color: transparent;
+        padding-bottom: 0;
+      }
+
+      .workflow li::before {
+        counter-increment: workflow;
+        content: counter(workflow);
+        position: absolute;
+        left: -16px;
+        top: 0;
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border: 2px solid #c7d6ea;
+        border-radius: 50%;
+        background: var(--bg);
+        color: var(--accent-strong);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .quick-table {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .quick-table th,
+      .quick-table td {
+        border-bottom: 1px solid var(--line);
+        padding: 13px 14px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .quick-table th {
+        background: #edf3fb;
+        color: #29405c;
+        font-size: 14px;
+      }
+
+      .quick-table tr:last-child td {
+        border-bottom: 0;
+      }
+
+      code {
+        border: 1px solid #d6e0ed;
+        border-radius: 5px;
+        background: #f0f4f9;
+        color: #1a3858;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 0.92em;
+        padding: 1px 5px;
+      }
+
+      footer {
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        padding: 30px 0 46px;
+      }
+
+      @media (max-width: 900px) {
+        .topbar-inner,
+        .hero-grid,
+        .section-head,
+        .grid.two,
+        .grid.three {
+          grid-template-columns: 1fr;
+        }
+
+        .topbar-inner {
+          align-items: flex-start;
+          padding: 14px 0;
+        }
+
+        .nav {
+          justify-content: flex-start;
+        }
+
+        .hero {
+          padding-top: 42px;
+        }
+      }
+
+      @media print {
+        .topbar,
+        .hero-actions {
+          display: none;
+        }
+
+        body {
+          background: #fff;
+        }
+
+        section {
+          page-break-inside: avoid;
+        }
+
+        .card,
+        .step,
+        .note,
+        .screenshot,
+        .hero-shot {
+          box-shadow: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="shell topbar-inner">
+        <a class="brand" href="#top" aria-label="返回顶部">
+          <img src="../src/assets/logo.svg" alt="UClaw 标志" />
+          <span>UClaw 使用说明</span>
+        </a>
+        <nav class="nav" aria-label="页面导航">
+          <a href="#what">是什么</a>
+          <a href="#prepare">准备</a>
+          <a href="#setup">首次设置</a>
+          <a href="#daily">日常使用</a>
+          <a href="#portable">移动盘</a>
+          <a href="#screens">页面导览</a>
+          <a href="#faq">常见问题</a>
+          <a href="#safety">安全建议</a>
+        </nav>
+      </div>
+    </header>
+
+    <div id="top" class="hero">
+      <div class="shell hero-grid">
+        <div>
+          <span class="eyebrow">给用户看的入门手册</span>
+          <h1>UClaw 使用说明</h1>
+          <p class="lead">
+            这份页面说明怎么安装、怎么完成首次设置、怎么配置 AI、怎么开始对话、怎么使用联网搜索，以及遇到问题时先看哪里。不讲源码、不讲开发命令。
+          </p>
+          <div class="meta">
+            <span class="pill">适用版本：UClaw v0.2.0 及相近版本</span>
+            <span class="pill">适用系统：Windows、macOS、Linux</span>
+            <span class="pill">文档日期：2026-05-04</span>
+          </div>
+          <div class="hero-actions">
+            <a class="button primary" href="#setup">从首次设置开始</a>
+            <a class="button" href="#faq">查看常见问题</a>
+          </div>
+        </div>
+        <figure class="hero-shot">
+          <img src="../resources/screenshot/zh/chat.png" alt="UClaw 中文聊天界面截图" />
+          <figcaption>UClaw 主聊天界面：完成设置后，就可以在这里向 AI 提问。</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <main class="shell">
+      <section id="what">
+        <div class="section-head">
+          <div>
+            <h2>1. UClaw 是什么</h2>
+            <p>UClaw 是一个桌面端 AI 助手应用。你可以把它理解成一个本地聊天工作台：它负责显示聊天界面、管理工作区、保存使用配置，并连接我们远程部署的 AI API、联网搜索能力、工具和插件。</p>
+          </div>
+          <div class="note success">
+            <div class="note-body">
+              <h3>一句话理解</h3>
+              <p>UClaw 不是一个单纯网页，也不是自带免费模型；它是一个已经集成 AI API 与联网搜索能力的桌面应用，并提供一键配置和一键切换能力。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <h3>普通用户常见用途</h3>
+            <ul>
+              <li>和 AI 对话，整理资料、写文案、解释代码、生成计划。</li>
+              <li>使用已提供的 AI API 服务与联网搜索能力。</li>
+              <li>需要较新公开信息时，让 AI 使用内置联网搜索。</li>
+              <li>把 UClaw 放在 U 盘或移动硬盘中，在不同电脑上使用同一个工作区。</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>几个关键词</h3>
+            <p><strong>工作区</strong>：保存配置、会话和相关数据的文件夹。</p>
+            <p><strong>AI API</strong>：由我们远程部署并维护的模型服务入口，UClaw 提供应用内一键配置和一键切换。</p>
+            <p><strong>联网搜索</strong>：由远程服务提供搜索能力，UClaw 已支持应用内一键配置和一键切换。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="prepare">
+        <div class="section-head">
+          <div>
+            <h2>2. 使用前需要准备什么</h2>
+            <p>安装前先准备好应用包、工作区和网络环境。AI API 与联网搜索能力通常可通过应用内一键配置完成。</p>
+          </div>
+          <div class="note warning">
+            <div class="note-body">
+              <h3>最容易漏掉的是网络和服务配置</h3>
+              <p>UClaw 通过远程部署的 AI API 服务提供模型调用能力。普通用户不需要自行部署或维护服务，只需要按界面完成一键配置或切换。</p>
+            </div>
+          </div>
+        </div>
+
+        <table class="quick-table">
+          <thead>
+            <tr>
+              <th>需要准备</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>UClaw 安装包或移动盘包</td>
+              <td>从 GitHub Release 或你收到的安装包中获取。Windows 通常是 <code>.exe</code> 安装包，也可能有适合 U 盘或移动硬盘使用的压缩包。</td>
+            </tr>
+            <tr>
+              <td>一个工作区文件夹</td>
+              <td>用来保存 UClaw 配置、会话和相关数据。推荐放在容易找到的位置，例如移动硬盘里的 <code>workspace</code> 文件夹。</td>
+            </tr>
+            <tr>
+              <td>AI 服务配置</td>
+              <td>用于连接远程 AI API 服务的配置信息。通常由 UClaw 提供一键配置入口，普通用户不需要手动部署或维护后端服务。</td>
+            </tr>
+            <tr>
+              <td>稳定网络</td>
+              <td>联网搜索、模型调用、首次下载或更新都需要网络。公司网或校园网限制较多时，可能需要代理或更换网络环境。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="setup">
+        <div class="section-head">
+          <div>
+            <h2>3. 第一次打开：按向导完成设置</h2>
+            <p>第一次启动 UClaw 时，一般会进入 Setup 设置向导。你只需要跟着界面一步步走。</p>
+          </div>
+          <div class="note">
+            <div class="note-body">
+              <h3>已有工作区可以继续使用</h3>
+              <p>如果你之前已经在某个工作区完成过设置，再次选择同一个工作区时，UClaw 会尽量沿用已有配置，减少重复填写。</p>
+            </div>
+          </div>
+        </div>
+
+        <ol class="workflow">
+          <li>
+            <h3>选择语言和基础环境</h3>
+            <p>确认应用能正常打开。如果界面提示缺少运行环境，先按提示修复；如果没有提示，可以直接下一步。</p>
+          </li>
+          <li>
+            <h3>选择工作区</h3>
+            <p>选择一个文件夹作为工作区。这个文件夹会保存你的 UClaw 配置、会话和相关数据。移动盘用户建议把工作区和 UClaw 数据目录放在同一个 U 盘或移动硬盘里。</p>
+          </li>
+          <li>
+            <h3>配置 AI 服务</h3>
+            <p>根据界面提示完成 AI 服务配置。通常只需要使用 UClaw 提供的一键配置或一键切换，不需要自己连接、部署或维护后端服务。</p>
+          </li>
+          <li>
+            <h3>开启联网搜索</h3>
+            <p>UClaw 已集成联网搜索能力，并支持在界面里一键配置和一键切换。普通用户不需要手动编辑配置文件。</p>
+          </li>
+          <li>
+            <h3>完成并进入对话</h3>
+            <p>完成设置后，UClaw 会启动本地网关。网关第一次启动可能需要一些时间，正常情况下等待片刻即可进入聊天。</p>
+          </li>
+        </ol>
+
+        <figure class="screenshot">
+          <img src="../resources/screenshot/zh/settings.png" alt="UClaw 设置页截图" />
+          <figcaption>设置页可查看语言、网关、模型服务、代理和诊断相关选项。</figcaption>
+        </figure>
+      </section>
+
+      <section id="daily">
+        <div class="section-head">
+          <div>
+            <h2>4. 日常怎么使用</h2>
+            <p>完成 Setup 后，最常见的操作就是开始对话、需要时让 AI 联网搜索，以及在模型或设置页面检查和切换 AI 服务配置。</p>
+          </div>
+          <div class="note success">
+            <div class="note-body">
+              <h3>重要内容请自己备份</h3>
+              <p>UClaw 会保存会话，但跨设备、移动硬盘、工作区切换时，重要结果最好复制到自己的笔记、文档或项目文件里。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid three">
+          <article class="step">
+            <span class="step-number">1</span>
+            <h3>开始对话</h3>
+            <p>打开 UClaw，进入对话页面，在输入框输入问题，例如“帮我整理这段会议记录”。按发送后等待 AI 回复。</p>
+          </article>
+          <article class="step">
+            <span class="step-number">2</span>
+            <h3>让 AI 联网搜索</h3>
+            <p>当问题涉及“最新消息”“今天”“最近版本”“现在价格”等变化信息时，明确要求联网搜索并附来源。</p>
+          </article>
+          <article class="step">
+            <span class="step-number">3</span>
+            <h3>查看和切换模型</h3>
+            <p>进入模型或设置页面，查看当前可用模型，并按需要一键切换 AI API 或联网搜索配置。若应用提示重启网关或刷新配置，按提示操作即可。</p>
+          </article>
+        </div>
+
+        <figure class="screenshot">
+          <img src="../resources/screenshot/zh/chat.png" alt="UClaw 对话页面截图" />
+          <figcaption>对话页：在输入框提问，也可以要求“搜索后总结，不要只凭记忆回答”。</figcaption>
+        </figure>
+      </section>
+
+      <section id="search-models">
+        <div class="section-head">
+          <div>
+            <h2>5. 联网搜索和模型</h2>
+            <p>UClaw 提供 AI API 与联网搜索能力的一键配置和一键切换。普通用户只需要确认服务配置可用、联网搜索已开启，并且当前网络可以访问远程服务。</p>
+          </div>
+          <div class="note">
+            <div class="note-body">
+              <h3>可以这样问</h3>
+              <p>“请联网搜索这个软件最近发布了什么更新，并附上来源。” “搜索后总结，不要只凭记忆回答。”</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <h3>搜索前先确认</h3>
+            <ul>
+              <li>普通模型对话是否可以正常回复。</li>
+              <li>联网搜索开关是否已经打开。</li>
+              <li>是否已经完成 UClaw 提供的一键联网搜索配置。</li>
+              <li>当前网络是否能访问远程 AI API 服务。</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>模型页面能看什么</h3>
+            <p>模型页面可以查看模型使用量、Token 分布和近期趋势，也可以作为检查 AI API 配置是否正常的入口。</p>
+          </article>
+        </div>
+
+        <figure class="screenshot">
+          <img src="../resources/screenshot/zh/models.png" alt="模型页面截图" />
+          <figcaption>模型页：查看近期模型用量、Token 统计和 AI API 配置相关入口。</figcaption>
+        </figure>
+      </section>
+
+      <section id="portable">
+        <div class="section-head">
+          <div>
+            <h2>6. 移动盘和跨系统使用</h2>
+            <p>UClaw 可以配合 U 盘或移动硬盘使用。核心原则是：使用包内启动器打开应用，让数据目录和工作区都跟着移动盘走。不同系统的启动方式略有区别。</p>
+          </div>
+          <div class="note warning">
+            <div class="note-body">
+              <h3>不要随意删除工作区内容</h3>
+              <p>工作区里保存了配置和会话数据。删除或移动后，UClaw 可能会要求重新完成 Setup。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid three">
+          <article class="card">
+            <h3>Windows 移动盘版</h3>
+            <ul>
+              <li>解压移动盘包到 U 盘或移动硬盘中的固定文件夹。</li>
+              <li>优先双击包内的 Windows 启动器；它会自动指定共享数据目录。</li>
+              <li>首次启动时选择同一块移动盘里的工作区文件夹。</li>
+              <li>如果系统提示安全风险，确认来源可信后再允许运行。</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>macOS 移动盘版</h3>
+            <ul>
+              <li>建议把 macOS 应用放在 APFS 分区或本机应用目录中，数据和工作区放在共享分区。</li>
+              <li>优先使用包内的 <code>Launch UClaw.command</code> 启动，避免数据目录指向错误。</li>
+              <li>首次打开时，如果 macOS 提示来自互联网或无法验证开发者，请在系统设置的安全性选项中允许打开。</li>
+              <li>不要在拷贝未完成时直接运行应用。</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Linux 移动盘版</h3>
+            <ul>
+              <li>解压 Linux 移动盘包到目标目录。</li>
+              <li>优先运行包内的 Linux 启动脚本；它会自动指定共享数据目录。</li>
+              <li>如果文件无法启动，先在文件属性中允许作为程序执行，或给启动脚本添加执行权限。</li>
+              <li>首次启动时选择稳定路径的工作区，避免移动盘挂载路径频繁变化。</li>
+            </ul>
+          </article>
+        </div>
+
+        <table class="quick-table">
+          <thead>
+            <tr>
+              <th>场景</th>
+              <th>推荐做法</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>同一台电脑长期使用</td>
+              <td>安装到本机，工作区放在本机磁盘即可。</td>
+            </tr>
+            <tr>
+              <td>跨 Windows、macOS、Linux 切换</td>
+              <td>使用移动硬盘或双分区方案，通过包内启动器打开应用，并把工作区放在各系统都能访问的位置。</td>
+            </tr>
+            <tr>
+              <td>换电脑后又进入 Setup</td>
+              <td>这是正常保护：如果本机没有完成过该工作区设置，或旧路径不存在，UClaw 会要求重新确认。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="screens">
+        <div class="section-head">
+          <div>
+            <h2>7. 页面导览</h2>
+            <p>下面几张截图展示 UClaw 的主要页面。普通用户日常最常用的是对话、模型、设置；需要自动化或外部消息时再使用定时任务和频道。</p>
+          </div>
+          <div class="note">
+            <div class="note-body">
+              <h3>不用一次学完</h3>
+              <p>先完成工作区和模型配置，能正常对话后，再慢慢了解技能、频道和定时任务。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <figure class="screenshot">
+            <img src="../resources/screenshot/zh/skills.png" alt="技能页面截图" />
+            <figcaption>技能页：查看已安装技能、启用状态和来源位置。</figcaption>
+          </figure>
+          <figure class="screenshot">
+            <img src="../resources/screenshot/zh/channels.png" alt="频道页面截图" />
+            <figcaption>频道页：管理外部消息通道、账号和 Agent 绑定。</figcaption>
+          </figure>
+          <figure class="screenshot">
+            <img src="../resources/screenshot/zh/cron.png" alt="定时任务页面截图" />
+            <figcaption>定时任务页：创建日报、监控、定期摘要等自动任务。</figcaption>
+          </figure>
+          <figure class="screenshot">
+            <img src="../resources/screenshot/zh/settings.png" alt="设置页面截图" />
+            <figcaption>设置页：修改语言、主题、本地网关、代理和诊断选项。</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="faq">
+        <div class="section-head">
+          <div>
+            <h2>8. 常见问题</h2>
+            <p>遇到问题时，先看是不是工作区、AI 服务配置、联网搜索开关或本地网关启动问题。下面是最常见的几类。</p>
+          </div>
+          <div class="note">
+            <div class="note-body">
+              <h3>网关第一次启动可能较慢</h3>
+              <p>第一次启动会准备本地运行环境并检查必要组件。老电脑、移动硬盘或杀毒软件扫描都可能拖慢启动。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <h3>为什么打开后又进入 Setup？</h3>
+            <p>常见原因是第一次在这台电脑安装、之前保存的工作区路径不存在、移动硬盘盘符变了，或者你手动删除了工作区。重新选择正确工作区即可。</p>
+          </article>
+          <article class="card">
+            <h3>为什么提示 AI 服务配置不可用？</h3>
+            <p>说明 AI 服务配置没有保存成功，或者当前工作区没有读取到旧配置。进入 AI 配置页重新完成一键配置或切换即可。</p>
+          </article>
+          <article class="card">
+            <h3>为什么联网搜索说不能搜索？</h3>
+            <p>如果普通对话可以但搜索失败，先检查联网搜索开关和一键配置是否完成，再检查当前网络是否能访问远程服务。</p>
+          </article>
+          <article class="card">
+            <h3>为什么网关启动慢？</h3>
+            <p>UClaw 会准备本地运行环境并检查必要组件。慢速移动硬盘、老电脑或安全软件扫描仍可能影响速度。</p>
+          </article>
+          <article class="card">
+            <h3>为什么同名应用会复用旧状态？</h3>
+            <p>桌面应用会在本机保存一些状态。新版会在工作区不存在或首次安装时要求重新 Setup，避免直接进入旧对话界面造成误解。</p>
+          </article>
+          <article class="card">
+            <h3>换电脑后配置没了怎么办？</h3>
+            <p>重新选择原工作区，并确认移动硬盘盘符和路径是否变化。如果原工作区不存在，就需要重新完成 Setup。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="safety">
+        <div class="section-head">
+          <div>
+            <h2>9. 安全和隐私建议</h2>
+            <p>工作区、服务配置和聊天记录都可能包含敏感信息。跨电脑和移动硬盘使用时，尤其要注意设备和文件安全。</p>
+          </div>
+          <div class="note danger">
+            <div class="note-body">
+              <h3>不要公开服务配置</h3>
+              <p>不要把服务配置、访问凭证或包含敏感信息的设置页面截图发给别人。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <h3>安全建议</h3>
+            <ul>
+              <li>移动硬盘丢失时，工作区里的配置和历史记录也可能泄露，建议重要设备开启磁盘加密。</li>
+              <li>不要把不可信来源的文件直接放进工作区。</li>
+              <li>公司、学校或团队使用时，先确认数据、服务配置和聊天记录是否允许放在个人设备或移动硬盘中。</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>信息判断</h3>
+            <p>联网搜索得到的信息要看来源。重要决策不要只听 AI 总结，最好打开来源页面核对原文、日期和上下文。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="checklist">
+        <div class="section-head">
+          <div>
+            <h2>10. 快速排查清单</h2>
+            <p>如果你只想快速定位问题，可以先按这张表操作。</p>
+          </div>
+          <div class="note success">
+            <div class="note-body">
+              <h3>一句话总结</h3>
+              <p>先选好工作区，再完成 AI 服务一键配置，最后进入对话。跨电脑使用时，把工作区和程序一起带走；联网搜索时，确认一键配置已完成且网络可用。</p>
+            </div>
+          </div>
+        </div>
+
+        <table class="quick-table">
+          <thead>
+            <tr>
+              <th>现象</th>
+              <th>先做什么</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>打不开软件</td>
+              <td>重新下载完整安装包；Windows 可尝试右键“以管理员身份运行”。</td>
+            </tr>
+            <tr>
+              <td>一直停在网关连接中</td>
+              <td>等待 30 秒；若仍不行，退出应用后重开；检查杀毒软件是否拦截。</td>
+            </tr>
+            <tr>
+              <td>模型列表为空</td>
+              <td>确认 AI API 配置是否已完成，必要时重新使用一键配置或一键切换。</td>
+            </tr>
+            <tr>
+              <td>对话能用，搜索不能用</td>
+              <td>确认联网搜索开关已打开，并完成 UClaw 的一键联网搜索配置；再检查网络是否可用。</td>
+            </tr>
+            <tr>
+              <td>换电脑后配置没了</td>
+              <td>重新选择原工作区；确认移动硬盘盘符和路径是否变化。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+
+    <footer>
+      <div class="shell">
+        <p>UClaw 使用说明。本文档为静态 HTML，可随应用仓库一起分发、离线打开或打印。</p>
+      </div>
+    </footer>
+  </body>
+</html>

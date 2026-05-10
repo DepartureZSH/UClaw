@@ -1,7 +1,11 @@
-# UClaw Portable USB Layout
+# UClaw USB Data Root Layout
 
-UClaw supports a dual-partition portable layout for drives that must work on
-Windows, macOS, and Linux.
+UClaw supports a dual-partition USB/external-drive layout for drives that must
+work on Windows, macOS, and Linux.
+
+UClaw no longer has a separate auto-detected portable mode. All launch paths use
+the same storage model: a launcher or command can pass `--uclaw-data-root` to
+choose where UClaw stores app settings and the default OpenClaw runtime files.
 
 ## Recommended layout
 
@@ -24,6 +28,31 @@ APFS for macOS `.app` bundles.
 Do not run macOS `.app` bundles directly from ExFAT. macOS apps rely on Unix
 permissions, extended attributes, symlinks, and code-signing metadata that ExFAT
 does not preserve reliably.
+
+## Data root rules
+
+The shared data directory should look like this:
+
+```text
+SHARE_EXFAT/data
+├── uclaw
+│   ├── settings.json
+│   ├── uclaw-providers.json
+│   └── logs
+└── .openclaw
+    ├── openclaw.json
+    └── agents
+```
+
+Startup priority is:
+
+1. `--uclaw-data-root <path>` or `--uclaw-data-root=<path>`
+2. `UCLAW_DATA_ROOT`
+3. the normal Electron app data location
+
+The app does not import the user's standalone `~/.openclaw` directory into this
+data root. If the user selects a workspace during Setup, OpenClaw runtime files
+continue to live under `<workspace>/.openclaw`.
 
 ## Build the layout
 
@@ -49,11 +78,12 @@ Start macOS with:
 /Volumes/MAC_APPS_APFS/Launch\ UClaw.command
 ```
 
-The launcher sets:
+The launcher keeps the workspace on the shared partition and passes the data
+root explicitly:
 
 ```bash
-UCLAW_PORTABLE_ROOT=/Volumes/SHARE_EXFAT/data
 UCLAW_WORKSPACE_DIR=/Volumes/SHARE_EXFAT/workspace
+open "$APP" --args --uclaw-data-root /Volumes/SHARE_EXFAT/data
 ```
 
 If your ExFAT volume uses a different name, edit `Launch UClaw.command` or run:
@@ -62,9 +92,37 @@ If your ExFAT volume uses a different name, edit `Launch UClaw.command` or run:
 node scripts/assemble-dual-partition-portable.mjs --share-volume YOUR_VOLUME_NAME
 ```
 
+## Windows launch
+
+Use the launcher generated next to the assembled USB package:
+
+```cmd
+"Launch UClaw Windows.cmd"
+```
+
+The launcher starts the Windows executable and passes the shared data root:
+
+```cmd
+windows\UClaw.exe --uclaw-data-root "%SCRIPT_DIR%data"
+```
+
+## Linux launch
+
+Use the generated shell launcher:
+
+```bash
+./launch-uclaw-linux.sh
+```
+
+If the file is not executable after copying, run:
+
+```bash
+chmod +x launch-uclaw-linux.sh
+```
+
 ## Development mode
 
-Use the portable development wrapper:
+Use the data-root development wrapper:
 
 ```bash
 pnpm run dev:portable
@@ -73,7 +131,7 @@ pnpm run dev:portable
 To point at a real shared directory:
 
 ```bash
-pnpm run dev:portable -- --portable-root E:\UClaw\data --workspace-dir E:\UClaw\workspace
+pnpm run dev:portable -- --data-root E:\UClaw\data --workspace-dir E:\UClaw\workspace
 ```
 
 On macOS/Linux, use absolute paths for the mounted volumes.

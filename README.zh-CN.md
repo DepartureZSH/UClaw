@@ -134,6 +134,9 @@ Skills 页面可展示来自多个 OpenClaw 来源的技能（托管目录、wor
 ### 🚀 开机启动控制
 在 **设置 → 通用** 中，你可以开启 **开机自动启动**，让 ClawX 在系统登录后自动启动。
 
+### 启动诊断配置
+启动加载页与 Gateway 启动阶段的超时时长集中定义在 `electron/utils/startup-config.ts`。高级构建可以通过持久化设置对象（`startup.stepTimeouts` 与 `startup.gateway`）或环境变量覆盖这些默认值。常用环境变量包括 `UCLAW_STARTUP_TIMEOUT_GATEWAY_START_MS`、`UCLAW_GATEWAY_READY_WAIT_TIMEOUT_MS`、`UCLAW_GATEWAY_CONNECT_HANDSHAKE_TIMEOUT_MS` 和 `UCLAW_GATEWAY_CHALLENGE_TIMEOUT_MS`。
+
 ---
 
 ## 快速上手
@@ -362,7 +365,7 @@ pnpm run package:portable:dual  # 构建推荐的双分区便携版布局
 
 在无头 Linux 环境下，Electron 测试需要显示服务；可使用 `xvfb-run -a pnpm run test:e2e`。
 
-制作 U 盘/移动硬盘便携版时，推荐使用 [`docs/portable-usb.md`](docs/portable-usb.md) 中的双分区布局：macOS `.app` 放在 APFS，Windows/Linux 程序和共享 UClaw data/workspace 放在 ExFAT。如果 macOS 提示 App Translocation，请参考 [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md)。
+制作 U 盘/移动硬盘版本时，推荐使用 [`docs/portable-usb.md`](docs/portable-usb.md) 中的双分区布局：macOS `.app` 放在 APFS，Windows/Linux 程序和共享 UClaw data/workspace 放在 ExFAT。应用不再通过附近的 `data/` 文件夹自动判断“便携模式”；启动器会显式传入 `--uclaw-data-root`，让安装版、移动盘版和 E2E 测试共用同一套数据目录逻辑。如果 macOS 提示 App Translocation，请参考 [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md)。
 
 ### 通信回归检查
 

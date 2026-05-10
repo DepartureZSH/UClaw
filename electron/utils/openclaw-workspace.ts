@@ -7,9 +7,8 @@
 import { access, readFile, writeFile, readdir, mkdir, unlink } from 'fs/promises';
 import { constants } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
 import { logger } from './logger';
-import { getResourcesDir } from './paths';
+import { expandPath, getOpenClawConfigDir, getResourcesDir } from './paths';
 
 const UCLAW_BEGIN = '<!-- uclaw:begin -->';
 const UCLAW_END = '<!-- uclaw:end -->';
@@ -48,10 +47,10 @@ export function mergeUClawSection(existing: string, section: string): string {
 /**
  * Collect all unique workspace directories from the openclaw config:
  * the defaults workspace, each agent's workspace, and any workspace-*
- * directories that already exist under ~/.openclaw/.
+ * directories that already exist under the active OpenClaw config directory.
  */
 async function resolveAllWorkspaceDirs(): Promise<string[]> {
-  const openclawDir = join(homedir(), '.openclaw');
+  const openclawDir = getOpenClawConfigDir();
   const dirs = new Set<string>();
 
   const configPath = join(openclawDir, 'openclaw.json');
@@ -61,7 +60,7 @@ async function resolveAllWorkspaceDirs(): Promise<string[]> {
 
       const defaultWs = config?.agents?.defaults?.workspace;
       if (typeof defaultWs === 'string' && defaultWs.trim()) {
-        dirs.add(defaultWs.replace(/^~/, homedir()));
+        dirs.add(expandPath(defaultWs));
       }
 
       const agents = config?.agents?.list;
@@ -69,7 +68,7 @@ async function resolveAllWorkspaceDirs(): Promise<string[]> {
         for (const agent of agents) {
           const ws = agent?.workspace;
           if (typeof ws === 'string' && ws.trim()) {
-            dirs.add(ws.replace(/^~/, homedir()));
+            dirs.add(expandPath(ws));
           }
         }
       }
@@ -78,7 +77,7 @@ async function resolveAllWorkspaceDirs(): Promise<string[]> {
     // ignore config parse errors
   }
 
-  // We intentionally do NOT scan ~/.openclaw/ for any directory starting
+  // We intentionally do NOT scan the OpenClaw config directory for any directory starting
   // with 'workspace'. Doing so causes a race condition where a recently deleted
   // agent's workspace (e.g., workspace-code23) is found and resuscitated by
   // the context merge routine before its deletion finishes. Only workspaces

@@ -138,54 +138,50 @@ Zustand stores in `src/stores/`: `chat`, `providers`, `settings`, `gateway`, `ch
 | IPC bridge (preload) | `electron/preload/index.ts` |
 | Setup wizard | `src/pages/Setup/index.tsx` |
 | Provider settings UI | `src/components/settings/ProvidersSettings.tsx` |
-| OpenClaw data directory | `~/.openclaw/` (runtime, not in repo) |
-| App settings storage | `~/.uclaw/settings.json` (runtime) |
+| OpenClaw data directory | `<dataRoot>/.openclaw/` or `<workspaceDir>/.openclaw/` (runtime, not in repo) |
+| App settings storage | `<dataRoot>/uclaw/settings.json` (runtime) |
 
 ---
 
-## USB Portable Mode
+## Unified Data Root
 
-### 触发机制
+### 解析机制
 
-在可执行文件目录或其任意父级目录（最多 4 层）创建 `data/` 文件夹即触发便携模式，无需任何参数或环境变量。多平台 USB 布局下各平台可执行文件放在子目录，共用 USB 根目录的 `data/`。
+UClaw 不再区分“普通安装版 / 便携版”双模式，也不再从可执行文件目录向上猜测 `data/`。所有运行方式统一解析一个明确的 `dataRoot`：
+
+1. 启动参数 `--uclaw-data-root=<path>`
+2. 环境变量 `UCLAW_DATA_ROOT`
+3. 默认 Electron `userData` 的父目录
 
 ```
-UClaw-USB/
-├── windows/
-│   ├── UClaw.exe
-│   ├── resources/
-│   └── locales/
-├── macos-arm64/
-│   └── UClaw.app/
-├── linux/
-│   ├── uclaw
-│   ├── resources/
-│   └── locales/
-└── data/              ← 所有平台共用（触发便携模式）
-    ├── uclaw/         ← userData（settings.json 等）
-    └── openclaw/      ← OpenClaw 配置
+<dataRoot>/
+├── uclaw/
+│   ├── settings.json
+│   ├── uclaw-providers.json
+│   └── logs/
+└── .openclaw/
+    ├── openclaw.json
+    └── agents/
 ```
 
 ### 实现要点
 
-- **`electron/main/index.ts`**：`detectPortableDataDir()` 向上最多走 4 层查找 `data/`，支持多平台 USB 布局（macOS .app 内部路径深 4 层）。调用 `app.setPath('userData', ...)` 并设置 `process.env.UCLAW_PORTABLE_ROOT`。必须在 `requestSingleInstanceLock()` 之前执行。
+- **`electron/utils/data-root.ts`**：`initializeDataRoot(app)` 必须在 `requestSingleInstanceLock()` 之前执行。它解析 `--uclaw-data-root` / `UCLAW_DATA_ROOT`，调用 `app.setPath('userData', <dataRoot>/uclaw)`，并设置 `process.env.UCLAW_DATA_ROOT`。
 
-- **`electron/utils/paths.ts`**：`getOpenClawConfigDir()` 检查 `UCLAW_PORTABLE_ROOT`，便携时返回 `<portableRoot>/openclaw/`。`getUClawConfigDir()` 返回 `<portableRoot>/uclaw/`。
+- **`electron/utils/paths.ts`**：`getOpenClawConfigDir()` 默认返回 `<dataRoot>/.openclaw`；如果 Setup/启动页选择了工作区，则返回 `<workspaceDir>/.openclaw`。`getUClawConfigDir()` 返回 `<dataRoot>/uclaw`。
 
-- **`electron/gateway/config-sync.ts`**：便携模式下向网关进程注入 `OPENCLAW_HOME=<portableRoot>`，让网关所有路径（config、workspace、skills）均解析到 `<portableRoot>/.openclaw/` 下，不读写本机 `~/.openclaw/`（openclaw 原生支持 `OPENCLAW_HOME` env var）。
+- **`electron/gateway/config-sync.ts`**：向网关进程注入 `OPENCLAW_HOME=<dataRoot>`；如果存在 `UCLAW_WORKSPACE_DIR`，则使用工作区作为 `OPENCLAW_HOME`，让 Gateway 解析到 `<workspaceDir>/.openclaw/`。
 
-- **`electron/utils/store.ts`**：`createDefaultSettings()` 检查 `UCLAW_PORTABLE_ROOT`，便携模式下默认 `autoCheckUpdate: false`、`telemetryEnabled: false`、`launchAtStartup: false`。
+- **`electron/utils/data-root.ts` 迁移策略**：只迁移 UClaw 自身旧 `userData`。不要默认导入用户本机 `~/.openclaw`，这个目录可能由 OpenClaw CLI 或其他工具管理。
 
-- **Setup 向导**（`src/pages/Setup/index.tsx`）：便携模式下显示简化 3 步向导（欢迎 → AI 配置 → 完成），跳过 Runtime 检测和安装步骤。AI 配置步骤直接创建 new-api Provider 账号并设为默认。
+- **IPC 通道**：使用 `app:getDataRoot` 和 `app:getStorageDiagnostics`。旧的 `app:isPortable`、`app:portableRoot`、`app:getPortableDiagnostics` 已废弃。
 
-- **IPC 通道**：`app:isPortable`、`app:portableRoot` 已注册，渲染层通过 `invokeIpc('app:isPortable')` 感知便携模式。
+### USB/开发模式验证
 
-### 开发模式验证
+USB 包不靠应用自动猜测目录，由启动器显式传参：
 
 ```bash
-# Windows CMD
-set UCLAW_PORTABLE_ROOT=C:\any\path && pnpm dev
+UClaw.exe --uclaw-data-root E:\UClaw\data
 
-# PowerShell
-$env:UCLAW_PORTABLE_ROOT="C:\any\path"; pnpm dev
+pnpm run dev:portable -- --data-root E:\UClaw\data --workspace-dir E:\UClaw\workspace
 ```

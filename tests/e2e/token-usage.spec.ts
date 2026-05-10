@@ -9,8 +9,8 @@ const NONZERO_TOKEN_SESSION_ID = 'agent-session-nonzero-token';
 const GATEWAY_INJECTED_SESSION_ID = 'agent-session-gateway-injected';
 const DELIVERY_MIRROR_SESSION_ID = 'agent-session-delivery-mirror';
 
-async function seedTokenUsageTranscripts(homeDir: string): Promise<void> {
-  const sessionDir = join(homeDir, '.openclaw', 'agents', TEST_AGENT_ID, 'sessions');
+async function seedTokenUsageTranscripts(dataRootDir: string): Promise<void> {
+  const sessionDir = join(dataRootDir, '.openclaw', 'agents', TEST_AGENT_ID, 'sessions');
   const now = new Date();
   const zeroTimestamp = new Date(now.getTime() - 20_000).toISOString();
   const nonzeroTimestamp = now.toISOString();
@@ -120,8 +120,8 @@ test.describe('UClaw token usage history', () => {
     }
   }
 
-  test('displays assistant usage for agent directory with zero and non-zero tokens', async ({ page, homeDir }) => {
-    await seedTokenUsageTranscripts(homeDir);
+  test('displays assistant usage for agent directory with zero and non-zero tokens', async ({ page, userDataDir }) => {
+    await seedTokenUsageTranscripts(userDataDir);
     await completeSetup(page);
     await validateUsageHistory(page);
 
@@ -145,8 +145,8 @@ test.describe('UClaw token usage history', () => {
   // the renderer's Zustand store in CI (where no real OpenClaw runtime exists).
   // The hostapi:fetch mock + page.reload approach fails because the reload
   // re-triggers setup flow. Skipping until we add an E2E-aware store hook.
-  test.skip('hides gateway internal usage rows from the usage list overview', async ({ page, homeDir }) => {
-    await seedTokenUsageTranscripts(homeDir);
+  test.skip('hides gateway internal usage rows from the usage list overview', async ({ page, userDataDir }) => {
+    await seedTokenUsageTranscripts(userDataDir);
     await completeSetup(page);
     await validateUsageHistory(page);
 

@@ -1,22 +1,27 @@
 import { dirname } from 'node:path';
 
-export interface PortableDiagnosticsInput {
+export interface StorageDiagnosticsInput {
   platform: NodeJS.Platform;
   exePath: string;
   appPath: string;
-  userDataDir: string;
-  portableRoot?: string | null;
+  dataRoot: string;
+  uclawDir: string;
+  openclawDir: string;
   workspaceDir?: string | null;
+  settingsPath: string;
+  providerStorePath: string;
 }
 
-export interface PortableDiagnostics {
+export interface StorageDiagnostics {
   platform: NodeJS.Platform;
-  isPortable: boolean;
-  portableRoot: string | null;
+  dataRoot: string;
+  uclawDir: string;
+  openclawDir: string;
   workspaceDir: string | null;
+  settingsPath: string;
+  providerStorePath: string;
   exePath: string;
   appPath: string;
-  userDataDir: string;
   isAppTranslocated: boolean;
   appBundlePath: string | null;
   recommendedLaunchCommand: string | null;
@@ -45,8 +50,7 @@ export function extractAppBundlePath(pathValue: string): string | null {
   return pathValue.slice(0, idx + '.app'.length);
 }
 
-export function buildPortableDiagnostics(input: PortableDiagnosticsInput): PortableDiagnostics {
-  const portableRoot = input.portableRoot?.trim() || null;
+export function buildStorageDiagnostics(input: StorageDiagnosticsInput): StorageDiagnostics {
   const workspaceDir = input.workspaceDir?.trim() || null;
   const isAppTranslocated = input.platform === 'darwin' && isAppTranslocatedPath(input.exePath);
   const appBundlePath = input.platform === 'darwin'
@@ -60,12 +64,14 @@ export function buildPortableDiagnostics(input: PortableDiagnosticsInput): Porta
 
   return {
     platform: input.platform,
-    isPortable: Boolean(portableRoot),
-    portableRoot,
+    dataRoot: input.dataRoot,
+    uclawDir: input.uclawDir,
+    openclawDir: input.openclawDir,
     workspaceDir,
+    settingsPath: input.settingsPath,
+    providerStorePath: input.providerStorePath,
     exePath: input.exePath,
     appPath: input.appPath,
-    userDataDir: input.userDataDir,
     isAppTranslocated,
     appBundlePath,
     recommendedLaunchCommand,

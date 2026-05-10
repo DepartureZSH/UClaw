@@ -4,8 +4,7 @@
  */
 import { app, BrowserWindow, nativeImage, session, shell } from 'electron';
 import type { Server } from 'node:http';
-import { dirname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
 import { GatewayManager } from '../gateway/manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { createTray } from './tray';
@@ -39,16 +38,15 @@ import {
 } from './quit-lifecycle';
 import { createSignalQuitHandler } from './signal-quit';
 import { acquireProcessInstanceFileLock } from './process-instance-lock';
-import { getSetting } from '../utils/store';
 import { ensureBuiltinSkillsInstalled, ensurePreinstalledSkillsInstalled } from '../utils/skill-config';
 import { startHostApiServer } from '../api/server';
 import { HostEventBus } from '../api/event-bus';
 import { deviceOAuthManager } from '../utils/device-oauth';
 import { browserOAuthManager } from '../utils/browser-oauth';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
-import { syncAllProviderAuthToRuntime } from '../services/providers/provider-runtime-sync';
-import { buildPortableDiagnostics } from '../utils/portable-diagnostics';
-import { resolveStartupWorkspaceState } from './workspace-startup';
+import { initializeDataRoot, resolveDataRoot, type DataRootResolution } from '../utils/data-root';
+import { buildStorageDiagnostics } from '../utils/storage-diagnostics';
+import { StartupProgressService } from './startup-progress-service';
 
 // On Windows, set console output code page to UTF-8 (65001) early so that
 // CJK characters in gateway stderr logs are not garbled when displayed in
@@ -69,59 +67,8 @@ if (process.platform === 'win32') {
 
 const WINDOWS_APP_USER_MODEL_ID = 'app.uclaw.desktop';
 const isE2EMode = process.env.UCLAW_E2E === '1';
-const requestedUserDataDir = process.env.UCLAW_USER_DATA_DIR?.trim();
-
-if (isE2EMode && requestedUserDataDir) {
-  app.setPath('userData', requestedUserDataDir);
-}
-
-// Portable USB mode: detect a 'data/' folder at or above the executable directory.
-// Walks up to 4 parent levels so that multi-platform USB layouts work:
-//   windows/UClaw.exe          → ../data/ (1 level up)
-//   linux/uclaw                → ../data/ (1 level up)
-//   macos/UClaw.app/.../UClaw  → ../../../../data/ (4 levels up through .app bundle)
-//   UClaw.exe (flat layout)    → ./data/ (0 levels up)
-// Must run before requestSingleInstanceLock() — the lock file lives in userData.
-function detectPortableDataDir(): string | null {
-  if (isE2EMode) return null;
-  // In dev mode (not packaged), skip auto-detection entirely.
-  // The source repo may have a data/ folder for testing, but that should not
-  // trigger portable mode unless the developer explicitly sets UCLAW_PORTABLE_ROOT.
-  if (!app.isPackaged) return null;
-  try {
-    // Walk up from the executable (covers all USB layouts):
-    //   windows/UClaw.exe          → ../data/          (1 level up)
-    //   linux/uclaw                → ../data/          (1 level up)
-    //   macos/UClaw.app/.../UClaw  → ../../../../data/ (4 levels up through .app bundle)
-    //   UClaw.exe (flat layout)    → ./data/           (0 levels up)
-    let dir = dirname(app.getPath('exe'));
-    for (let i = 0; i <= 4; i++) {
-      const candidate = join(dir, 'data');
-      if (existsSync(candidate)) return candidate;
-      const parent = dirname(dir);
-      if (parent === dir) break; // filesystem root
-      dir = parent;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-if (!isE2EMode) {
-  // Allow dev-mode override: if UCLAW_PORTABLE_ROOT is already set in the
-  // environment (e.g. via PowerShell before `pnpm dev`), use it directly
-  // without relying on the exe-relative data/ directory walk.
-  const envPortableRoot = process.env.UCLAW_PORTABLE_ROOT?.trim() || null;
-  const portableRoot = envPortableRoot ?? detectPortableDataDir();
-  if (portableRoot) {
-    const uclawDir = join(portableRoot, 'uclaw');
-    mkdirSync(uclawDir, { recursive: true });
-    app.setPath('userData', uclawDir);
-    // Signal paths.ts and store.ts that portable mode is active.
-    process.env.UCLAW_PORTABLE_ROOT = portableRoot;
-  }
-}
+let dataRootResolution: DataRootResolution;
+let earlyStartupError: unknown = null;
 
 // Disable GPU hardware acceleration globally for maximum stability across
 // all GPU configurations (no GPU, integrated, discrete).
@@ -157,6 +104,18 @@ if (!gotElectronLock) {
   console.info('[UClaw] Another instance already holds the single-instance lock; exiting duplicate process');
   app.exit(0);
 }
+if (gotElectronLock) {
+  try {
+    dataRootResolution = initializeDataRoot(app);
+  } catch (error) {
+    earlyStartupError = error;
+    dataRootResolution = resolveDataRoot({
+      defaultUserDataDir: app.getPath('userData'),
+      exePath: app.getPath('exe'),
+    });
+    console.error('[UClaw] Failed to initialize data root; startup repair page will be shown', error);
+  }
+}
 let releaseProcessInstanceFileLock: () => void = () => {};
 let gotFileLock = true;
 if (gotElectronLock && !isE2EMode) {
@@ -190,6 +149,7 @@ let mainWindow: BrowserWindow | null = null;
 let gatewayManager!: GatewayManager;
 let clawHubService!: ClawHubService;
 let hostEventBus!: HostEventBus;
+let startupProgressService!: StartupProgressService;
 let hostApiServer: Server | null = null;
 const mainWindowFocusState = createMainWindowFocusState();
 const quitLifecycleState = createQuitLifecycleState();
@@ -361,39 +321,22 @@ async function initialize(): Promise<void> {
     `Runtime: platform=${process.platform}/${process.arch}, electron=${process.versions.electron}, node=${process.versions.node}, packaged=${app.isPackaged}, pid=${process.pid}, ppid=${process.ppid}`
   );
 
-  const portableDiagnostics = buildPortableDiagnostics({
+  const storageDiagnostics = buildStorageDiagnostics({
     platform: process.platform,
     exePath: app.getPath('exe'),
     appPath: app.getAppPath(),
-    userDataDir: app.getPath('userData'),
-    portableRoot: process.env.UCLAW_PORTABLE_ROOT ?? null,
+    dataRoot: dataRootResolution.dataRoot,
+    uclawDir: dataRootResolution.uclawDir,
+    openclawDir: dataRootResolution.openclawDir,
     workspaceDir: process.env.UCLAW_WORKSPACE_DIR ?? null,
+    settingsPath: join(dataRootResolution.uclawDir, 'settings.json'),
+    providerStorePath: join(dataRootResolution.uclawDir, 'uclaw-providers.json'),
   });
-  if (portableDiagnostics.isAppTranslocated) {
-    logger.warn(`[portable] AppTranslocation detected at ${portableDiagnostics.exePath}; startup side effects will be skipped.`);
+  if (storageDiagnostics.isAppTranslocated) {
+    logger.warn(`[storage] AppTranslocation detected at ${storageDiagnostics.exePath}; startup side effects will be skipped.`);
   }
 
-  // Apply custom workspace dir before gateway starts.
-  // UCLAW_WORKSPACE_DIR takes priority over UCLAW_PORTABLE_ROOT (see paths.ts).
-  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
-    const { setupComplete, workspaceDir, resetReason, resetWorkspaceDir } = await resolveStartupWorkspaceState();
-    if (resetReason) {
-      logger.warn(
-        resetReason === 'missing-workspace'
-          ? `[workspace] Persisted workspace no longer exists; resetting setup state: ${resetWorkspaceDir ?? '(unknown)'}`
-          : '[workspace] Setup was marked complete without a workspace; resetting setup state',
-      );
-      delete process.env.UCLAW_WORKSPACE_DIR;
-    } else if (workspaceDir) {
-      process.env.UCLAW_WORKSPACE_DIR = workspaceDir;
-      logger.info(`[workspace] Using custom workspace: ${workspaceDir}`);
-    } else if (!setupComplete) {
-      delete process.env.UCLAW_WORKSPACE_DIR;
-      logger.info('[workspace] Setup incomplete; ignoring persisted workspace until setup applies it');
-    }
-  }
-
-  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
+  if (!earlyStartupError && !isE2EMode && !storageDiagnostics.isAppTranslocated) {
     // Warm up network optimization (non-blocking)
     void warmupNetworkOptimization();
 
@@ -403,7 +346,7 @@ async function initialize(): Promise<void> {
     // Apply persisted proxy settings before creating windows or network requests.
     await applyProxySettings();
     await syncLaunchAtStartupSettingFromStore();
-  } else if (portableDiagnostics.isAppTranslocated) {
+  } else if (storageDiagnostics.isAppTranslocated) {
     logger.warn('Startup side effects minimized because macOS AppTranslocation is active');
   } else {
     logger.info('Running in E2E mode: startup side effects minimized');
@@ -416,7 +359,7 @@ async function initialize(): Promise<void> {
   const window = createMainWindow();
 
   // Create system tray
-  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
+  if (!earlyStartupError && !isE2EMode && !storageDiagnostics.isAppTranslocated) {
     createTray(window);
   }
 
@@ -445,8 +388,16 @@ async function initialize(): Promise<void> {
 
   // Register IPC handlers
   registerIpcHandlers(gatewayManager, clawHubService, window);
+  startupProgressService.registerIpcHandlers();
 
-  if (portableDiagnostics.isAppTranslocated) {
+  if (earlyStartupError) {
+    await startupProgressService.runInitialStartup({ isE2EMode, storageDiagnostics, startupError: earlyStartupError });
+    logger.error('Initialization stopped because data root startup failed:', earlyStartupError);
+    return;
+  }
+
+  if (storageDiagnostics.isAppTranslocated) {
+    await startupProgressService.runInitialStartup({ isE2EMode, storageDiagnostics });
     logger.warn('Initialization stopped before Host API, extensions, and Gateway startup because macOS AppTranslocation is active');
     return;
   }
@@ -480,7 +431,7 @@ async function initialize(): Promise<void> {
   // Repair any bootstrap files that only contain UClaw markers (no OpenClaw
   // template content). This fixes a race condition where ensureUClawContext()
   // previously created the file before the gateway could seed the full template.
-  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
+  if (!isE2EMode && !storageDiagnostics.isAppTranslocated) {
     void repairUClawOnlyBootstrapFiles().catch((error) => {
       logger.warn('Failed to repair bootstrap files:', error);
     });
@@ -488,7 +439,7 @@ async function initialize(): Promise<void> {
 
   // Pre-deploy built-in skills (feishu-doc, feishu-drive, feishu-perm, feishu-wiki)
   // to ~/.openclaw/skills/ so they are immediately available without manual install.
-  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
+  if (!isE2EMode && !storageDiagnostics.isAppTranslocated) {
     void ensureBuiltinSkillsInstalled().catch((error) => {
       logger.warn('Failed to install built-in skills:', error);
     });
@@ -497,7 +448,7 @@ async function initialize(): Promise<void> {
   // Pre-deploy bundled third-party skills from resources/preinstalled-skills.
   // This installs full skill directories (not only SKILL.md) in an idempotent,
   // non-destructive way and never blocks startup.
-  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
+  if (!isE2EMode && !storageDiagnostics.isAppTranslocated) {
     void ensurePreinstalledSkillsInstalled().catch((error) => {
       logger.warn('Failed to install preinstalled skills:', error);
     });
@@ -507,7 +458,7 @@ async function initialize(): Promise<void> {
   // renderer subscribers observe the full startup lifecycle.
   gatewayManager.on('status', (status: { state: string }) => {
     hostEventBus.emit('gateway:status', status);
-    if (status.state === 'running' && !isE2EMode && !portableDiagnostics.isAppTranslocated) {
+    if (status.state === 'running' && !isE2EMode && !storageDiagnostics.isAppTranslocated) {
       void ensureUClawContext().catch((error) => {
         logger.warn('Failed to re-merge UClaw context after gateway reconnect:', error);
       });
@@ -578,40 +529,20 @@ async function initialize(): Promise<void> {
     hostEventBus.emit('channel:whatsapp-error', error);
   });
 
-  // Start Gateway automatically (this seeds missing bootstrap files with full templates)
-  const gatewayAutoStart = await getSetting('gatewayAutoStart');
-  const setupComplete = await getSetting('setupComplete');
-  if (!isE2EMode && setupComplete && gatewayAutoStart && !portableDiagnostics.isAppTranslocated) {
-    try {
-      await syncAllProviderAuthToRuntime();
-      logger.debug('Auto-starting Gateway...');
-      await gatewayManager.start();
-      logger.info('Gateway auto-start succeeded');
-    } catch (error) {
-      logger.error('Gateway auto-start failed:', error);
-      mainWindow?.webContents.send('gateway:error', String(error));
-    }
-  } else if (portableDiagnostics.isAppTranslocated) {
-    logger.warn('Gateway auto-start skipped because macOS AppTranslocation is active');
-  } else if (isE2EMode) {
-    logger.info('Gateway auto-start skipped in E2E mode');
-  } else if (!setupComplete) {
-    logger.info('Gateway auto-start skipped because setup is incomplete');
-  } else {
-    logger.info('Gateway auto-start disabled in settings');
-  }
+  await startupProgressService.runInitialStartup({ isE2EMode, storageDiagnostics });
 
   // Merge UClaw context snippets into the workspace bootstrap files.
   // The gateway seeds workspace files asynchronously after its HTTP server
   // is ready, so ensureUClawContext will retry until the target files appear.
-  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
+  const startupStatus = startupProgressService.getSnapshot().status;
+  if (!isE2EMode && !storageDiagnostics.isAppTranslocated && (startupStatus === 'ready' || startupStatus === 'warning')) {
     void ensureUClawContext().catch((error) => {
       logger.warn('Failed to merge UClaw context into workspace:', error);
     });
   }
 
   // Auto-install openclaw CLI and shell completions (non-blocking).
-  if (!isE2EMode && !portableDiagnostics.isAppTranslocated) {
+  if (!isE2EMode && !storageDiagnostics.isAppTranslocated) {
     void autoInstallCliIfNeeded((installedPath) => {
       mainWindow?.webContents.send('openclaw:cli-installed', installedPath);
     }).then(() => {
@@ -630,6 +561,7 @@ if (gotTheLock) {
   });
 
   process.on('exit', () => {
+    dataRootResolution.releaseDataRootLock?.();
     releaseProcessInstanceFileLock();
   });
 
@@ -637,6 +569,7 @@ if (gotTheLock) {
   process.once('SIGTERM', () => requestQuitOnSignal('SIGTERM'));
 
   app.on('will-quit', () => {
+    dataRootResolution.releaseDataRootLock?.();
     releaseProcessInstanceFileLock();
   });
 
@@ -647,6 +580,10 @@ if (gotTheLock) {
   gatewayManager = new GatewayManager();
   clawHubService = new ClawHubService();
   hostEventBus = new HostEventBus();
+  startupProgressService = new StartupProgressService({
+    gatewayManager,
+    getMainWindow: () => mainWindow,
+  });
 
   // Register builtin extensions and load manifest
   registerAllBuiltinExtensions();

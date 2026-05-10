@@ -12,7 +12,7 @@ import { ClawHubService, ClawHubSearchParams, ClawHubInstallParams, ClawHubUnins
 import {
   type ProviderConfig,
 } from '../utils/secure-storage';
-import { getOpenClawStatus, getOpenClawDir, getOpenClawConfigDir, getOpenClawSkillsDir, ensureDir } from '../utils/paths';
+import { getOpenClawStatus, getOpenClawDir, getOpenClawConfigDir, getOpenClawSkillsDir, getUClawConfigDir, ensureDir } from '../utils/paths';
 import { getOpenClawCliCommand } from '../utils/openclaw-cli';
 import { getAllSettings, getSetting, resetSettings, setSetting, type AppSettings } from '../utils/store';
 import {
@@ -23,7 +23,8 @@ import {
 } from '../utils/openclaw-auth';
 import { syncProxyConfigToOpenClaw } from '../utils/openclaw-proxy';
 import { buildOpenClawControlUiUrl } from '../utils/openclaw-control-ui';
-import { buildPortableDiagnostics } from '../utils/portable-diagnostics';
+import { getConfiguredDataRoot } from '../utils/data-root';
+import { buildStorageDiagnostics } from '../utils/storage-diagnostics';
 import { logger } from '../utils/logger';
 import { resolveAgentIdFromChannel } from '../utils/agent-config';
 import { resolveAccountIdFromSessionHistory } from '../utils/session-util';
@@ -144,6 +145,22 @@ export function registerIpcHandlers(
   registerFileHandlers();
 }
 
+function getStorageDiagnostics() {
+  const dataRoot = getConfiguredDataRoot();
+  const uclawDir = getUClawConfigDir();
+  return buildStorageDiagnostics({
+    platform: process.platform,
+    exePath: app.getPath('exe'),
+    appPath: app.getAppPath(),
+    dataRoot,
+    uclawDir,
+    openclawDir: getOpenClawConfigDir(),
+    workspaceDir: process.env.UCLAW_WORKSPACE_DIR ?? null,
+    settingsPath: join(uclawDir, 'settings.json'),
+    providerStorePath: join(uclawDir, 'uclaw-providers.json'),
+  });
+}
+
 function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {
   const providerService = getProviderService();
   const handleProxySettingsChange = async () => {
@@ -171,15 +188,11 @@ function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {
           if (request.action === 'version') data = app.getVersion();
           else if (request.action === 'name') data = app.getName();
           else if (request.action === 'platform') data = process.platform;
-          else if (request.action === 'getPortableDiagnostics') {
-            data = buildPortableDiagnostics({
-              platform: process.platform,
-              exePath: app.getPath('exe'),
-              appPath: app.getAppPath(),
-              userDataDir: app.getPath('userData'),
-              portableRoot: process.env.UCLAW_PORTABLE_ROOT ?? null,
-              workspaceDir: process.env.UCLAW_WORKSPACE_DIR ?? null,
-            });
+          else if (request.action === 'getStorageDiagnostics') {
+            data = getStorageDiagnostics();
+          }
+          else if (request.action === 'getDataRoot') {
+            data = getConfiguredDataRoot();
           }
           else {
             return {
@@ -2218,17 +2231,9 @@ function registerAppHandlers(): void {
     app.quit();
   });
 
-  ipcMain.handle('app:isPortable', () => !!process.env.UCLAW_PORTABLE_ROOT);
-  ipcMain.handle('app:portableRoot', () => process.env.UCLAW_PORTABLE_ROOT ?? null);
+  ipcMain.handle('app:getDataRoot', () => getConfiguredDataRoot());
 
-  ipcMain.handle('app:getPortableDiagnostics', () => buildPortableDiagnostics({
-    platform: process.platform,
-    exePath: app.getPath('exe'),
-    appPath: app.getAppPath(),
-    userDataDir: app.getPath('userData'),
-    portableRoot: process.env.UCLAW_PORTABLE_ROOT ?? null,
-    workspaceDir: process.env.UCLAW_WORKSPACE_DIR ?? null,
-  }));
+  ipcMain.handle('app:getStorageDiagnostics', () => getStorageDiagnostics());
 
   ipcMain.handle('app:getWorkspaceDir', () => process.env.UCLAW_WORKSPACE_DIR ?? '');
 
@@ -2421,7 +2426,9 @@ function mimeToExt(mimeType: string): string {
   return '';
 }
 
-const OUTBOUND_DIR = join(homedir(), '.openclaw', 'media', 'outbound');
+function getOutboundDir(): string {
+  return join(getOpenClawConfigDir(), 'media', 'outbound');
+}
 
 /**
  * Generate a preview data URL for image files.
@@ -2453,19 +2460,20 @@ async function generateImagePreview(filePath: string, mimeType: string): Promise
 
 /**
  * File staging IPC handlers
- * Stage files to ~/.openclaw/media/outbound/ for gateway access
+ * Stage files to the active OpenClaw media/outbound directory for gateway access
  */
 function registerFileHandlers(): void {
   // Stage files from real disk paths (used with dialog:open)
   ipcMain.handle('file:stage', async (_, filePaths: string[]) => {
     const fsP = await import('fs/promises');
-    await fsP.mkdir(OUTBOUND_DIR, { recursive: true });
+    const outboundDir = getOutboundDir();
+    await fsP.mkdir(outboundDir, { recursive: true });
 
     const results = [];
     for (const filePath of filePaths) {
       const id = crypto.randomUUID();
       const ext = extname(filePath);
-      const stagedPath = join(OUTBOUND_DIR, `${id}${ext}`);
+      const stagedPath = join(outboundDir, `${id}${ext}`);
       await fsP.copyFile(filePath, stagedPath);
 
       const s = await fsP.stat(stagedPath);
@@ -2490,11 +2498,12 @@ function registerFileHandlers(): void {
     mimeType: string;
   }) => {
     const fsP = await import('fs/promises');
-    await fsP.mkdir(OUTBOUND_DIR, { recursive: true });
+    const outboundDir = getOutboundDir();
+    await fsP.mkdir(outboundDir, { recursive: true });
 
     const id = crypto.randomUUID();
     const ext = extname(payload.fileName) || mimeToExt(payload.mimeType);
-    const stagedPath = join(OUTBOUND_DIR, `${id}${ext}`);
+    const stagedPath = join(outboundDir, `${id}${ext}`);
     const buffer = Buffer.from(payload.base64, 'base64');
     await fsP.writeFile(stagedPath, buffer);
 

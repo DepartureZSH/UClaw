@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import path from 'path';
 import { existsSync, readFileSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'fs';
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 
 function fsPath(filePath: string): string {
@@ -26,6 +26,7 @@ import { buildProxyEnv, resolveProxySettings } from '../utils/proxy';
 import { syncProxyConfigToOpenClaw } from '../utils/openclaw-proxy';
 import { logger } from '../utils/logger';
 import { prependPathEntry } from '../utils/env-path';
+import { getConfiguredDataRoot } from '../utils/data-root';
 import { copyPluginFromNodeModules, fixupPluginManifest, cpSyncSafe } from '../utils/plugin-install';
 import { stripSystemdSupervisorEnv } from './config-sync-env';
 import { withConfigLock } from '../utils/config-mutex';
@@ -94,12 +95,26 @@ function readObject(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-async function readGatewayOpenClawConfig(): Promise<Record<string, unknown>> {
+async function backupCorruptJsonFile(filePath: string): Promise<string> {
+  const backupPath = `${filePath}.corrupt.${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  await copyFile(filePath, backupPath);
+  return backupPath;
+}
+
+export async function readGatewayOpenClawConfig(): Promise<Record<string, unknown>> {
   const configPath = join(getOpenClawConfigDir(), 'openclaw.json');
   try {
     const raw = await readFile(configPath, 'utf-8');
     return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
+  } catch (error) {
+    const errno = (error as NodeJS.ErrnoException).code;
+    if (errno === 'ENOENT') {
+      return {};
+    }
+    if (error instanceof SyntaxError) {
+      const backupPath = await backupCorruptJsonFile(configPath);
+      throw new Error(`JSON parse failed for ${configPath}; corrupt backup saved to ${backupPath}`, { cause: error });
+    }
     return {};
   }
 }
@@ -734,14 +749,9 @@ export async function prepareGatewayLaunchContext(port: number): Promise<Gateway
   };
 
   // Set OPENCLAW_HOME so the gateway resolves all paths to the correct location.
-  // Explicit workspace dir takes priority over portable-mode auto-detection.
+  // Explicit workspace dir takes priority over the unified data root.
   const workspaceDir = process.env.UCLAW_WORKSPACE_DIR?.trim();
-  const portableRoot = process.env.UCLAW_PORTABLE_ROOT?.trim();
-  if (workspaceDir) {
-    forkEnv.OPENCLAW_HOME = workspaceDir;
-  } else if (portableRoot) {
-    forkEnv.OPENCLAW_HOME = portableRoot;
-  }
+  forkEnv.OPENCLAW_HOME = workspaceDir || getConfiguredDataRoot();
 
   // Ensure extension-specific packages (e.g. grammy from the telegram
   // extension) are resolvable by shared dist/ chunks via symlinks in

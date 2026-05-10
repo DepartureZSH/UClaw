@@ -6,6 +6,10 @@ import { app } from 'electron';
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
 import { PORTS } from '../utils/config';
+import {
+  resolveGatewayStartupConfig,
+  type GatewayStartupConfig,
+} from '../utils/startup-config';
 import { JsonRpcNotification, isNotification, isResponse } from './protocol';
 import { logger } from '../utils/logger';
 import { captureTelemetryEvent, trackMetric } from '../utils/telemetry';
@@ -92,6 +96,19 @@ export interface GatewayDiagnosticsSnapshot {
   consecutiveRpcFailures: number;
 }
 
+export type GatewayStartupProgressPhase =
+  | 'find-existing'
+  | 'wait-port'
+  | 'start-process'
+  | 'wait-ready'
+  | 'connect'
+  | 'rpc-ready';
+
+export interface GatewayStartupProgress {
+  phase: GatewayStartupProgressPhase;
+  message?: string;
+}
+
 function isTransportRpcFailure(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes('RPC timeout:')
@@ -142,6 +159,7 @@ export class GatewayManager extends EventEmitter {
   private reloadPolicy: GatewayReloadPolicy = { ...DEFAULT_GATEWAY_RELOAD_POLICY };
   private reloadPolicyLoadedAt = 0;
   private reloadPolicyRefreshPromise: Promise<void> | null = null;
+  private gatewayStartupConfig: GatewayStartupConfig = resolveGatewayStartupConfig();
   private externalShutdownSupported: boolean | null = null;
   private reconnectAttemptsTotal = 0;
   private reconnectSuccessTotal = 0;
@@ -156,10 +174,6 @@ export class GatewayManager extends EventEmitter {
   private static readonly HEARTBEAT_TIMEOUT_MS_WIN = 25_000;
   private static readonly HEARTBEAT_MAX_MISSES_WIN = 5;
   public static readonly RESTART_COOLDOWN_MS = 5_000;
-  private static readonly GATEWAY_READY_FALLBACK_MS = 30_000;
-  private static readonly GATEWAY_READY_PROBE_INITIAL_DELAY_MS = 500;
-  private static readonly GATEWAY_READY_PROBE_INTERVAL_MS = 2_000;
-  private static readonly GATEWAY_READY_PROBE_TIMEOUT_MS = 5_000;
   private lastRestartAt = 0;
   /** Set by scheduleReconnect() before calling start() to signal auto-reconnect. */
   private isAutoReconnectStart = false;
@@ -251,10 +265,17 @@ export class GatewayManager extends EventEmitter {
   /**
    * Start Gateway process
    */
-  async start(): Promise<void> {
+  async start(options: {
+    onStartupProgress?: (progress: GatewayStartupProgress) => void;
+    startupConfig?: Partial<GatewayStartupConfig>;
+  } = {}): Promise<void> {
     if (this.startLock) {
       logger.debug('Gateway start ignored because a start flow is already in progress');
       return;
+    }
+
+    if (options.startupConfig) {
+      this.gatewayStartupConfig = resolveGatewayStartupConfig(options.startupConfig);
     }
 
     if (this.status.state === 'running') {
@@ -316,12 +337,15 @@ export class GatewayManager extends EventEmitter {
           // snapshot captured at start() entry is stale after startProcess()
           // replaces this.process — leading to the just-started pid being
           // immediately killed as a false orphan on the next retry iteration.
+          options.onStartupProgress?.({ phase: 'find-existing', message: `port=${port}` });
           return await findExistingGatewayProcess({ port, ownedPid: this.process?.pid });
         },
         connect: async (port, externalToken) => {
+          options.onStartupProgress?.({ phase: 'connect', message: externalToken ? 'external gateway' : 'managed gateway' });
           await this.connect(port, externalToken);
         },
         onConnectedToExistingGateway: () => {
+          options.onStartupProgress?.({ phase: 'rpc-ready', message: 'existing gateway connected' });
           // If the existing gateway is actually our own spawned UtilityProcess
           // (e.g. after a self-restart code=1012), keep ownership so that
           // stop() can still terminate the process during a restart() cycle.
@@ -343,20 +367,27 @@ export class GatewayManager extends EventEmitter {
           this.startHealthCheck();
         },
         waitForPortFree: async (port) => {
-          await waitForPortFree(port);
+          options.onStartupProgress?.({ phase: 'wait-port', message: `port=${port}` });
+          await waitForPortFree(port, this.gatewayStartupConfig.waitForPortFreeTimeoutMs);
         },
         startProcess: async () => {
+          options.onStartupProgress?.({ phase: 'start-process' });
           await this.startProcess();
           tSpawned = Date.now();
         },
         waitForReady: async (port) => {
+          options.onStartupProgress?.({ phase: 'wait-ready', message: `port=${port}` });
           await waitForGatewayReady({
             port,
             getProcessExitCode: () => this.processExitCode,
+            timeoutMs: this.gatewayStartupConfig.readyWaitTimeoutMs,
+            intervalMs: this.gatewayStartupConfig.readyWaitPollIntervalMs,
+            probeTimeoutMs: this.gatewayStartupConfig.readyProbeTimeoutMs,
           });
           tReady = Date.now();
         },
         onConnectedToManagedGateway: () => {
+          options.onStartupProgress?.({ phase: 'rpc-ready' });
           this.startHealthCheck();
           const tConnected = Date.now();
           logger.info('[metric] gateway.startup', {
@@ -775,12 +806,12 @@ export class GatewayManager extends EventEmitter {
       this.gatewayReadyFallbackTimer = null;
       if (this.status.state === 'running' && !this.status.gatewayReady) {
         logger.warn('Gateway ready event not received within timeout; continuing RPC readiness probes');
-        this.scheduleGatewayReadyProbe(GatewayManager.GATEWAY_READY_PROBE_INTERVAL_MS);
+        this.scheduleGatewayReadyProbe(this.gatewayStartupConfig.subsystemReadyProbeIntervalMs);
       }
-    }, GatewayManager.GATEWAY_READY_FALLBACK_MS);
+    }, this.gatewayStartupConfig.subsystemReadyFallbackMs);
   }
 
-  private scheduleGatewayReadyProbe(delayMs = GatewayManager.GATEWAY_READY_PROBE_INITIAL_DELAY_MS): void {
+  private scheduleGatewayReadyProbe(delayMs = this.gatewayStartupConfig.subsystemReadyProbeInitialDelayMs): void {
     if (this.status.state !== 'running' || this.status.gatewayReady) return;
     if (this.gatewayReadyProbeTimer || this.gatewayReadyProbeInFlight) return;
     this.gatewayReadyProbeTimer = setTimeout(() => {
@@ -795,7 +826,7 @@ export class GatewayManager extends EventEmitter {
     }
     this.gatewayReadyProbeInFlight = true;
     try {
-      await this.sendRpc('sessions.list', {}, GatewayManager.GATEWAY_READY_PROBE_TIMEOUT_MS, {
+      await this.sendRpc('sessions.list', {}, this.gatewayStartupConfig.subsystemReadyProbeTimeoutMs, {
         bypassReadyGate: true,
         recordDiagnostics: false,
       });
@@ -803,7 +834,7 @@ export class GatewayManager extends EventEmitter {
     } catch (error) {
       logger.debug(`[gateway-ready] RPC readiness probe failed: ${error instanceof Error ? error.message : String(error)}`);
       this.gatewayReadyProbeInFlight = false;
-      this.scheduleGatewayReadyProbe(GatewayManager.GATEWAY_READY_PROBE_INTERVAL_MS);
+      this.scheduleGatewayReadyProbe(this.gatewayStartupConfig.subsystemReadyProbeIntervalMs);
       return;
     }
     this.gatewayReadyProbeInFlight = false;
@@ -1025,6 +1056,8 @@ export class GatewayManager extends EventEmitter {
       platform: process.platform,
       pendingRequests: this.pendingRequests,
       getToken: async () => await import('../utils/store').then(({ getSetting }) => getSetting('gatewayToken')),
+      challengeTimeoutMs: this.gatewayStartupConfig.challengeTimeoutMs,
+      connectTimeoutMs: this.gatewayStartupConfig.connectHandshakeTimeoutMs,
       onHandshakeComplete: (ws) => {
         this.ws = ws;
         ws.on('pong', () => {

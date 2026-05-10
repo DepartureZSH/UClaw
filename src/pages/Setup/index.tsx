@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settings';
+import { useStartupStore } from '@/stores/startup';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
@@ -96,8 +97,10 @@ export function Setup() {
   const [workspaceDir, setWorkspaceDir] = useState('');
   const [workspaceHasExistingConfig, setWorkspaceHasExistingConfig] = useState(false);
   const [checkingWorkspaceConfig, setCheckingWorkspaceConfig] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   const markSetupComplete = useSettingsStore((state) => state.markSetupComplete);
+  const runStartupAction = useStartupStore((state) => state.runAction);
 
   const steps = getSteps(t);
   const safeStepIndex = Math.min(Math.max(currentStep, 0), steps.length - 1);
@@ -106,6 +109,7 @@ export function Setup() {
   const isLastStep = safeStepIndex === steps.length - 1;
 
   const canProceed = useMemo(() => {
+    if (!hydrated) return false;
     switch (safeStepIndex) {
       case STEP.WELCOME:    return true;
       case STEP.WORKSPACE:  return true;      // optional
@@ -115,7 +119,11 @@ export function Setup() {
       case STEP.COMPLETE:   return true;
       default: return true;
     }
-  }, [safeStepIndex, runtimeChecksPassed]);
+  }, [hydrated, safeStepIndex, runtimeChecksPassed]);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,21 +147,10 @@ export function Setup() {
     return () => { cancelled = true; };
   }, [workspaceDir]);
 
-  const requestGatewayStartAfterSetup = () => {
-    void invokeIpc<{ state: string }>('gateway:status')
-      .then(async (status) => {
-        if (status.state === 'running' || status.state === 'starting' || status.state === 'reconnecting') {
-          return;
-        }
-
-        const result = await invokeIpc<{ success?: boolean; error?: string }>('gateway:start');
-        if (!result?.success) {
-          throw new Error(result?.error || 'Failed to start Gateway');
-        }
-      })
-      .catch((error) => {
-        toast.error(`Gateway 启动失败：${error instanceof Error ? error.message : String(error)}`);
-      });
+  const requestGatewayStartAfterSetup = async () => {
+    await runStartupAction({ id: 'retry-current-step' }).catch((error) => {
+      toast.error(`启动流程重试失败：${error instanceof Error ? error.message : String(error)}`);
+    });
   };
 
   const handleNext = async () => {
@@ -167,7 +164,7 @@ export function Setup() {
     }
     if (isLastStep) {
       await markSetupComplete();
-      requestGatewayStartAfterSetup();
+      await requestGatewayStartAfterSetup();
       toast.success(t('complete.title'));
       navigate('/');
     } else {
@@ -179,7 +176,7 @@ export function Setup() {
 
   const handleSkip = async () => {
     await markSetupComplete();
-    requestGatewayStartAfterSetup();
+    await requestGatewayStartAfterSetup();
     navigate('/');
   };
 
@@ -254,7 +251,7 @@ export function Setup() {
                 />
               )}
               {safeStepIndex === STEP.RUNTIME    && <RuntimeContent onStatusChange={setRuntimeChecksPassed} />}
-              {safeStepIndex === STEP.AI_CONFIG  && <PortableConfigContent onSaved={() => setAiConfigSaved(true)} />}
+              {safeStepIndex === STEP.AI_CONFIG  && <AiConfigContent onSaved={() => setAiConfigSaved(true)} />}
               {safeStepIndex === STEP.INSTALLING && <InstallingContent skills={getDefaultSkills(t)} onComplete={handleInstallationComplete} onSkip={() => setCurrentStep((i) => i + 1)} />}
               {safeStepIndex === STEP.COMPLETE   && <CompleteContent installedSkills={installedSkills} />}
             </div>
@@ -273,7 +270,7 @@ export function Setup() {
                 <div className="flex gap-2">
                   {/* 跳过整个 setup（不在 Runtime/AI config 步骤时可见） */}
                   {!isLastStep && safeStepIndex !== STEP.RUNTIME && safeStepIndex !== STEP.AI_CONFIG && (
-                    <Button data-testid="setup-skip-button" variant="ghost" onClick={handleSkip}>
+                    <Button data-testid="setup-skip-button" variant="ghost" onClick={handleSkip} disabled={!hydrated}>
                       {t('nav.skipSetup')}
                     </Button>
                   )}
@@ -658,13 +655,13 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
   );
 }
 
-// ==================== Portable Config Step ====================
+// ==================== AI Config Step ====================
 
-interface PortableConfigContentProps {
+interface AiConfigContentProps {
   onSaved: () => void;
 }
 
-function PortableConfigContent({ onSaved }: PortableConfigContentProps) {
+function AiConfigContent({ onSaved }: AiConfigContentProps) {
   const DEFAULT_BASE_URL = 'https://chatbot.cn.unreachablecity.club/v1';
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
   const [apiKey, setApiKey] = useState('');

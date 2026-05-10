@@ -116,7 +116,7 @@ async function closeElectronApp(app: ElectronApplication, timeoutMs = 5_000): Pr
 
 async function launchUClawElectron(
   homeDir: string,
-  userDataDir: string,
+  dataRootDir: string,
   options: LaunchElectronOptions = {},
 ): Promise<ElectronApplication> {
   const hostApiPort = await allocatePort();
@@ -125,7 +125,7 @@ async function launchUClawElectron(
     : {};
   return await electron.launch({
     executablePath: electronBinaryPath,
-    args: [electronEntry],
+    args: [electronEntry, `--uclaw-data-root=${dataRootDir}`],
     env: {
       ...process.env,
       ...electronEnv,
@@ -135,7 +135,6 @@ async function launchUClawElectron(
       LOCALAPPDATA: join(homeDir, 'AppData', 'Local'),
       XDG_CONFIG_HOME: join(homeDir, '.config'),
       UCLAW_E2E: '1',
-      UCLAW_USER_DATA_DIR: userDataDir,
       ...(options.skipSetup ? { UCLAW_E2E_SKIP_SETUP: '1' } : {}),
       UCLAW_PORT_UCLAW_HOST_API: String(hostApiPort),
     },
@@ -157,7 +156,7 @@ export const test = base.extend<ElectronFixtures>({
   },
 
   userDataDir: async ({ browserName: _browserName }, provideUserDataDir) => {
-    const userDataDir = await mkdtemp(join(tmpdir(), 'uclaw-e2e-user-data-'));
+    const userDataDir = await mkdtemp(join(tmpdir(), 'uclaw-e2e-data-root-'));
     try {
       await provideUserDataDir(userDataDir);
     } finally {

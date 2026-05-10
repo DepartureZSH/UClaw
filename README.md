@@ -134,6 +134,9 @@ Light mode, dark mode, or system-synchronized themes. ClawX adapts to your prefe
 ### 🚀 Startup Launch Control
 In **Settings → General**, you can enable **Launch at system startup** so ClawX starts automatically after login.
 
+### Startup Diagnostics Configuration
+Startup loading and Gateway startup timings are centralized in `electron/utils/startup-config.ts`. Advanced builds can override them through the persisted settings object (`startup.stepTimeouts` and `startup.gateway`) or through environment variables. Common overrides include `UCLAW_STARTUP_TIMEOUT_GATEWAY_START_MS`, `UCLAW_GATEWAY_READY_WAIT_TIMEOUT_MS`, `UCLAW_GATEWAY_CONNECT_HANDSHAKE_TIMEOUT_MS`, and `UCLAW_GATEWAY_CHALLENGE_TIMEOUT_MS`.
+
 ---
 
 ## Getting Started
@@ -362,7 +365,7 @@ pnpm run package:portable:dual  # Build the recommended dual-partition portable 
 
 On headless Linux, run Electron tests under a display server such as `xvfb-run -a pnpm run test:e2e`.
 
-For portable USB/hard-drive builds, prefer the dual-partition layout documented in [`docs/portable-usb.md`](docs/portable-usb.md). macOS `.app` bundles should live on APFS, while Windows/Linux builds and shared UClaw data/workspace can live on ExFAT. If macOS reports App Translocation, see [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md).
+For USB/hard-drive builds, prefer the dual-partition layout documented in [`docs/portable-usb.md`](docs/portable-usb.md). macOS `.app` bundles should live on APFS, while Windows/Linux builds and shared UClaw data/workspace can live on ExFAT. The app no longer auto-detects a portable mode from nearby folders; launchers pass `--uclaw-data-root` explicitly so installation, USB, and E2E runs share the same data-root behavior. If macOS reports App Translocation, see [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md).
 
 ### Communication Regression Checks
 

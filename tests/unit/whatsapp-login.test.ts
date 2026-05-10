@@ -84,6 +84,7 @@ describe('WhatsApp login cancel cleanup logic', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
     vi.resetModules();
+    process.env.UCLAW_DATA_ROOT = testHome;
     await rm(testHome, { recursive: true, force: true });
     await rm(testUserData, { recursive: true, force: true });
   });
@@ -130,6 +131,7 @@ describe('listConfiguredChannels WhatsApp detection', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
     vi.resetModules();
+    process.env.UCLAW_DATA_ROOT = testHome;
     await rm(testHome, { recursive: true, force: true });
     await rm(testUserData, { recursive: true, force: true });
   });

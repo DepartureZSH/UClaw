@@ -5,6 +5,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import i18n from '@/i18n';
+import { invokeIpc } from '@/lib/api-client';
 import { hostApiFetch } from '@/lib/host-api';
 import { resolveSupportedLanguage } from '../../shared/language';
 
@@ -199,14 +200,18 @@ export const useSettingsStore = create<SettingsState>()(
         await hostApiFetch('/api/settings/setupComplete', {
           method: 'PUT',
           body: JSON.stringify({ value: true }),
-        }).catch(() => { });
+        }).catch(async () => {
+          await invokeIpc('settings:set', 'setupComplete', true).catch(() => {});
+        });
       },
       resetSetup: async () => {
         set({ setupComplete: false });
         await hostApiFetch('/api/settings/setupComplete', {
           method: 'PUT',
           body: JSON.stringify({ value: false }),
-        }).catch(() => { });
+        }).catch(async () => {
+          await invokeIpc('settings:set', 'setupComplete', false).catch(() => {});
+        });
       },
       resetSettings: () => set(defaultSettings),
     }),

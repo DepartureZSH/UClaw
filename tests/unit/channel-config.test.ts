@@ -51,7 +51,7 @@ describe('channel credential normalization and duplicate checks', () => {
     vi.resetAllMocks();
     vi.resetModules();
     delete process.env.UCLAW_WORKSPACE_DIR;
-    delete process.env.UCLAW_PORTABLE_ROOT;
+    process.env.UCLAW_DATA_ROOT = testHome;
     await rm(testHome, { recursive: true, force: true });
     await rm(testUserData, { recursive: true, force: true });
   });

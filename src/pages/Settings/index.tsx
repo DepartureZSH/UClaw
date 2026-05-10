@@ -48,14 +48,16 @@ type ControlUiInfo = {
   port: number;
 };
 
-type PortableDiagnostics = {
+type StorageDiagnostics = {
   platform: string;
-  isPortable: boolean;
-  portableRoot: string | null;
+  dataRoot: string;
+  uclawDir: string;
+  openclawDir: string;
   workspaceDir: string | null;
+  settingsPath: string;
+  providerStorePath: string;
   exePath: string;
   appPath: string;
-  userDataDir: string;
   isAppTranslocated: boolean;
   appBundlePath: string | null;
   recommendedLaunchCommand: string | null;
@@ -113,7 +115,7 @@ export function Settings() {
   const [wsDiagnosticEnabled, setWsDiagnosticEnabled] = useState(false);
   const [showTelemetryViewer, setShowTelemetryViewer] = useState(false);
   const [telemetryEntries, setTelemetryEntries] = useState<UiTelemetryEntry[]>([]);
-  const [portableDiagnostics, setPortableDiagnostics] = useState<PortableDiagnostics | null>(null);
+  const [storageDiagnostics, setStorageDiagnostics] = useState<StorageDiagnostics | null>(null);
 
   const isWindows = window.electron.platform === 'win32';
   const showCliTools = true;
@@ -221,19 +223,19 @@ export function Settings() {
     }
   };
 
-  const refreshPortableDiagnostics = useCallback(async () => {
+  const refreshStorageDiagnostics = useCallback(async () => {
     try {
-      const diagnostics = await invokeIpc<PortableDiagnostics>('app:getPortableDiagnostics');
-      setPortableDiagnostics(diagnostics);
+      const diagnostics = await invokeIpc<StorageDiagnostics>('app:getStorageDiagnostics');
+      setStorageDiagnostics(diagnostics);
     } catch (error) {
-      toast.error(toUserMessage(error) || 'Failed to load portable diagnostics');
+      toast.error(toUserMessage(error) || 'Failed to load storage diagnostics');
     }
   }, []);
 
-  const handleCopyPortableDiagnostics = async () => {
-    if (!portableDiagnostics) return;
-    await navigator.clipboard.writeText(JSON.stringify(portableDiagnostics, null, 2));
-    toast.success('Portable diagnostics copied');
+  const handleCopyStorageDiagnostics = async () => {
+    if (!storageDiagnostics) return;
+    await navigator.clipboard.writeText(JSON.stringify(storageDiagnostics, null, 2));
+    toast.success('Storage diagnostics copied');
   };
 
 
@@ -320,8 +322,8 @@ export function Settings() {
 
   useEffect(() => {
     if (!devModeUnlocked) return;
-    void refreshPortableDiagnostics();
-  }, [devModeUnlocked, refreshPortableDiagnostics]);
+    void refreshStorageDiagnostics();
+  }, [devModeUnlocked, refreshStorageDiagnostics]);
 
   useEffect(() => {
     if (!devModeUnlocked) return;
@@ -855,16 +857,16 @@ export function Settings() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <Label className="text-[14px] font-medium text-foreground/80">Portable diagnostics</Label>
+                        <Label className="text-[14px] font-medium text-foreground/80">Storage diagnostics</Label>
                         <p className="text-[13px] text-muted-foreground mt-1">
-                          Inspect portable root, workspace, user data, and macOS App Translocation state.
+                          Inspect data root, workspace, config files, and macOS App Translocation state.
                         </p>
                       </div>
                       <div className="flex gap-2">
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={() => void refreshPortableDiagnostics()}
+                          onClick={() => void refreshStorageDiagnostics()}
                           className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
                         >
                           <RefreshCw className="h-4 w-4 mr-2" />
@@ -873,8 +875,8 @@ export function Settings() {
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={handleCopyPortableDiagnostics}
-                          disabled={!portableDiagnostics}
+                          onClick={handleCopyStorageDiagnostics}
+                          disabled={!storageDiagnostics}
                           className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
                         >
                           <Copy className="h-4 w-4 mr-2" />
@@ -883,27 +885,30 @@ export function Settings() {
                       </div>
                     </div>
 
-                    {portableDiagnostics && (
-                      <div data-testid="settings-portable-diagnostics" className="space-y-3 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-black/5 dark:bg-white/5">
+                    {storageDiagnostics && (
+                      <div data-testid="settings-storage-diagnostics" className="space-y-3 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-black/5 dark:bg-white/5">
                         <div className="flex flex-wrap gap-2 text-[12px]">
-                          <Badge variant={portableDiagnostics.isPortable ? 'secondary' : 'outline'} className="rounded-full px-3 py-1">
-                            portable: {portableDiagnostics.isPortable ? 'yes' : 'no'}
+                          <Badge variant="secondary" className="rounded-full px-3 py-1">
+                            dataRoot
                           </Badge>
-                          <Badge variant={portableDiagnostics.isAppTranslocated ? 'destructive' : 'secondary'} className="rounded-full px-3 py-1">
-                            AppTranslocation: {portableDiagnostics.isAppTranslocated ? 'yes' : 'no'}
+                          <Badge variant={storageDiagnostics.isAppTranslocated ? 'destructive' : 'secondary'} className="rounded-full px-3 py-1">
+                            AppTranslocation: {storageDiagnostics.isAppTranslocated ? 'yes' : 'no'}
                           </Badge>
                           <Badge variant="outline" className="rounded-full px-3 py-1">
-                            platform: {portableDiagnostics.platform}
+                            platform: {storageDiagnostics.platform}
                           </Badge>
                         </div>
                         <div className="grid gap-2 text-[12px] font-mono text-muted-foreground">
-                          <p className="break-all">portableRoot: {portableDiagnostics.portableRoot || '-'}</p>
-                          <p className="break-all">workspaceDir: {portableDiagnostics.workspaceDir || '-'}</p>
-                          <p className="break-all">userDataDir: {portableDiagnostics.userDataDir}</p>
-                          <p className="break-all">exePath: {portableDiagnostics.exePath}</p>
-                          <p className="break-all">appPath: {portableDiagnostics.appPath}</p>
-                          {portableDiagnostics.recommendedLaunchCommand && (
-                            <p className="break-all">launch: {portableDiagnostics.recommendedLaunchCommand}</p>
+                          <p className="break-all">dataRoot: {storageDiagnostics.dataRoot}</p>
+                          <p className="break-all">uclawDir: {storageDiagnostics.uclawDir}</p>
+                          <p className="break-all">openclawDir: {storageDiagnostics.openclawDir}</p>
+                          <p className="break-all">workspaceDir: {storageDiagnostics.workspaceDir || '-'}</p>
+                          <p className="break-all">settingsPath: {storageDiagnostics.settingsPath}</p>
+                          <p className="break-all">providerStorePath: {storageDiagnostics.providerStorePath}</p>
+                          <p className="break-all">exePath: {storageDiagnostics.exePath}</p>
+                          <p className="break-all">appPath: {storageDiagnostics.appPath}</p>
+                          {storageDiagnostics.recommendedLaunchCommand && (
+                            <p className="break-all">launch: {storageDiagnostics.recommendedLaunchCommand}</p>
                           )}
                         </div>
                       </div>

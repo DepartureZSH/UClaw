@@ -70,7 +70,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SHARE_VOLUME="${SHARE_VOLUME}"
 SHARE_ROOT="/Volumes/$SHARE_VOLUME"
 
-export UCLAW_PORTABLE_ROOT="$SHARE_ROOT/data"
+DATA_ROOT="$SHARE_ROOT/data"
 export UCLAW_WORKSPACE_DIR="$SHARE_ROOT/workspace"
 
 APP=""
@@ -86,15 +86,15 @@ if [[ -z "$APP" ]]; then
   exit 1
 fi
 
-if [[ ! -d "$UCLAW_PORTABLE_ROOT" ]]; then
-  echo "Shared data directory not found: $UCLAW_PORTABLE_ROOT"
+if [[ ! -d "$DATA_ROOT" ]]; then
+  echo "Shared data directory not found: $DATA_ROOT"
   echo "Mount the ExFAT partition as /Volumes/$SHARE_VOLUME or edit this launcher."
   exit 1
 fi
 
 mkdir -p "$UCLAW_WORKSPACE_DIR"
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
-open "$APP"
+open "$APP" --args --uclaw-data-root "$DATA_ROOT"
 `;
   writeFileSync(launcherPath, content, 'utf-8');
   chmodSync(launcherPath, 0o755);

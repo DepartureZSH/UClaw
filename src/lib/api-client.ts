@@ -82,9 +82,8 @@ const UNIFIED_CHANNELS = new Set<string>([
   'cron:toggle',
   'cron:trigger',
   'usage:recentTokenHistory',
-  'app:isPortable',
-  'app:portableRoot',
-  'app:getPortableDiagnostics',
+  'app:getDataRoot',
+  'app:getStorageDiagnostics',
 ]);
 
 const customInvokers = new Map<Exclude<TransportKind, 'ipc'>, TransportInvoker>();

@@ -9,10 +9,10 @@ const argValue = (name, fallback) => {
 };
 
 const root = resolve(process.cwd());
-const portableRoot = resolve(argValue('--portable-root', join(root, 'data', 'dev-portable', 'data')));
+const dataRoot = resolve(argValue('--data-root', join(root, 'data', 'dev-portable', 'data')));
 const workspaceDir = resolve(argValue('--workspace-dir', join(root, 'data', 'dev-portable', 'workspace')));
 
-mkdirSync(portableRoot, { recursive: true });
+mkdirSync(dataRoot, { recursive: true });
 mkdirSync(workspaceDir, { recursive: true });
 
 const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
@@ -20,7 +20,7 @@ const child = spawn(command, ['dev'], {
   stdio: 'inherit',
   env: {
     ...process.env,
-    UCLAW_PORTABLE_ROOT: portableRoot,
+    UCLAW_DATA_ROOT: dataRoot,
     UCLAW_WORKSPACE_DIR: workspaceDir,
   },
 });
