@@ -1,4 +1,0 @@
-interface:
-  display_name: "UClaw GitHub Release"
-  short_description: "Manage UClaw GitHub releases and Actions."
-  default_prompt: "Use this skill for UClaw GitHub remotes, release tags, packaging workflows, Actions run checks, or release troubleshooting."
