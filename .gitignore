@@ -65,6 +65,14 @@ build/
 artifacts/
 docs/pr-session-notes-*.md
 
+# Local planning and repair-plan drafts
+PLAN.md
+PRD.md
+StartPagePLAN.md
+UClaw 双分区便携版修复计划.md
+启动异常分级与修复计划.md
+启动梳理文档.md
+
 .cursor/
 .claude/
 .pnpm-store/
