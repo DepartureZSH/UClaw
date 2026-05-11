@@ -751,54 +751,14 @@ exports.default = async function afterPack(context) {
       console.log(`[after-pack] 🩹 Patched ${asarLruCount} lru-cache instance(s) in app.asar.unpacked`);
     }
   }
-  // 6. [Windows only] Patch NSIS extractAppPackage.nsh to skip CopyFiles
+  // 6. [Windows only] Patch NSIS uninstaller filename.
   //
-  // electron-builder's extractUsing7za macro decompresses app-64.7z into a temp
-  // directory, then uses CopyFiles to copy ~300MB (thousands of small files) to
-  // $INSTDIR.  With Windows Defender real-time scanning each file, CopyFiles
-  // alone takes 3-5 minutes and makes the installer appear frozen.
-  //
-  // Patch: replace the macro with a direct Nsis7z::Extract to $INSTDIR.  This is
-  // safe because customCheckAppRunning in installer.nsh already renames the old
-  // $INSTDIR to a _stale_ directory, so the target is always an empty dir.
-  // The Nsis7z plugin streams LZMA2 data directly to disk — no temp copy needed.
+  // Do NOT patch extractAppPackage.nsh to extract directly to $INSTDIR. Direct
+  // Nsis7z extraction proved unreliable on exFAT USB drives with the very large
+  // OpenClaw node_modules tree: installs could take hours and leave corrupted
+  // 1-byte package.json files. Keep electron-builder's default temp extraction
+  // + CopyFiles path for NSIS, and provide a Windows zip target for USB use.
   if (platform === 'win32') {
-    const extractNsh = join(
-      __dirname, '..', 'node_modules', 'app-builder-lib',
-      'templates', 'nsis', 'include', 'extractAppPackage.nsh'
-    );
-    if (existsSync(extractNsh)) {
-      const { readFileSync: readFS, writeFileSync: writeFS } = require('fs');
-      const original = readFS(extractNsh, 'utf8');
-
-      // Only patch once (idempotent check)
-      if (original.includes('CopyFiles') && !original.includes('UClaw-patched')) {
-        // Replace the extractUsing7za macro body with a direct extraction.
-        // Keep the macro signature so the rest of the template compiles unchanged.
-        const patched = original.replace(
-          /(!macro extractUsing7za FILE[\s\S]*?!macroend)/,
-          [
-            '!macro extractUsing7za FILE',
-            '  ; UClaw-patched: extract directly to $INSTDIR (skip temp + CopyFiles).',
-            '  ; customCheckAppRunning already renamed old $INSTDIR to _stale_X,',
-            '  ; so the target directory is always empty.  Nsis7z streams LZMA2 data',
-            '  ; directly to disk — ~10s vs 3-5 min for CopyFiles with Windows Defender.',
-            '  Nsis7z::Extract "${FILE}"',
-            '!macroend',
-          ].join('\n')
-        );
-
-        if (patched !== original) {
-          writeFS(extractNsh, patched, 'utf8');
-          console.log('[after-pack] ⚡ Patched extractAppPackage.nsh: CopyFiles eliminated, using direct Nsis7z::Extract.');
-        } else {
-          console.warn('[after-pack] ⚠️  extractAppPackage.nsh regex did not match — template may have changed.');
-        }
-      } else if (original.includes('UClaw-patched')) {
-        console.log('[after-pack] ⚡ extractAppPackage.nsh already patched (idempotent skip).');
-      }
-    }
-
     const commonNsh = join(
       __dirname, '..', 'node_modules', 'app-builder-lib',
       'templates', 'nsis', 'common.nsh'
