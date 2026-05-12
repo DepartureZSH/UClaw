@@ -5,6 +5,7 @@ import {
 } from '../../utils/secure-storage';
 import {
   getProviderConfig,
+  getProviderDefaultModel,
 } from '../../utils/provider-registry';
 import { deviceOAuthManager, type OAuthProviderType } from '../../utils/device-oauth';
 import { browserOAuthManager, type BrowserOAuthProviderType } from '../../utils/browser-oauth';
@@ -213,8 +214,10 @@ export async function handleProviderRoutes(
       const baseUrl = (account.baseUrl || 'https://chatbot.cn.unreachablecity.club/v1').replace(/\/$/, '');
       const pricingBase = typeof account.metadata?.pricingBase === 'number' ? account.metadata.pricingBase : undefined;
       const configuredModels = await getOpenClawRuntimeModelIds(providerCandidates);
+      const defaultModel = normalizeConfiguredModelId(getProviderDefaultModel(account.vendorId), providerCandidates);
       const accountModels = mergeModelIds([
         normalizeConfiguredModelId(account.model, providerCandidates),
+        defaultModel,
         ...((account.fallbackModels ?? []).map((model) => normalizeConfiguredModelId(model, providerCandidates))),
       ]);
       let result: Awaited<ReturnType<typeof fetchModelsWithPricing>>;

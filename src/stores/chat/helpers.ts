@@ -168,19 +168,9 @@ function matchesOptimisticUserMessage(
   const timestampDiffMs = hasOptimisticTimestamp && hasCandidateTimestamp
     ? Math.abs(toMs(candidate.timestamp as number) - optimisticTimestampMs)
     : null;
-  const timestampMatches = timestampDiffMs != null ? timestampDiffMs < 30000 : false;
-
-  console.log('[matchOptimistic]', {
-    sameText,
-    sameAttachments,
-    hasCandidateTimestamp,
-    timestampDiffMs,
-    timestampMatches,
-    optimisticText: optimisticText.slice(0, 40),
-    candidateText: candidateText.slice(0, 40),
-    candidateTimestamp: candidate.timestamp,
-    optimisticTimestampMs,
-  });
+  const timestampMatches = timestampDiffMs != null
+    ? toMs(candidate.timestamp as number) >= optimisticTimestampMs - 5000 && timestampDiffMs < 10 * 60_000
+    : false;
 
   if (sameText && sameAttachments) return true;
   if (sameText && (!optimisticAttachments || !candidateAttachments) && (timestampMatches || !hasCandidateTimestamp)) return true;
@@ -211,7 +201,7 @@ function snapshotStreamingAssistantMessage(
 
 function getLatestOptimisticUserMessage(messages: RawMessage[], userTimestampMs: number): RawMessage | undefined {
   return [...messages].reverse().find(
-    (message) => message.role === 'user' && (!message.timestamp || Math.abs(toMs(message.timestamp) - userTimestampMs) < 5000),
+    (message) => message.role === 'user' && (!message.timestamp || Math.abs(toMs(message.timestamp) - userTimestampMs) < 10 * 60_000),
   );
 }
 

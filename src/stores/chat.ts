@@ -66,6 +66,11 @@ const HISTORY_LOAD_MIN_INTERVAL_MS = 800;
 const HISTORY_POLL_SILENCE_WINDOW_MS = 2_500;
 const CHAT_EVENT_DEDUPE_TTL_MS = 30_000;
 const _chatEventDedupe = new Map<string, number>();
+let _pendingOptimisticUserMessageId: string | null = null;
+
+function clearPendingOptimisticUserMessage(): void {
+  _pendingOptimisticUserMessageId = null;
+}
 
 function clearErrorRecoveryTimer(): void {
   if (_errorRecoveryTimer) {
@@ -260,9 +265,10 @@ function matchesOptimisticUserMessage(
   const sameAttachments = optimisticAttachments.length > 0 && optimisticAttachments === candidateAttachments;
 
   const hasOptimisticTimestamp = Number.isFinite(optimisticTimestampMs) && optimisticTimestampMs > 0;
-  const hasCandidateTimestamp = candidate.timestamp != null;
-  const timestampMatches = hasOptimisticTimestamp && hasCandidateTimestamp
-    ? Math.abs(toMs(candidate.timestamp as number) - optimisticTimestampMs) < 5000
+  const hasCandidateTimestamp = candidate.timestamp != null && Number.isFinite(Number(candidate.timestamp));
+  const candidateTimestampMs = hasCandidateTimestamp ? toMs(Number(candidate.timestamp)) : null;
+  const timestampMatches = hasOptimisticTimestamp && candidateTimestampMs != null
+    ? candidateTimestampMs >= optimisticTimestampMs - 5000 && candidateTimestampMs <= optimisticTimestampMs + 10 * 60_000
     : false;
 
   if (sameText && sameAttachments) return true;
@@ -293,8 +299,12 @@ function snapshotStreamingAssistantMessage(
 }
 
 function getLatestOptimisticUserMessage(messages: RawMessage[], userTimestampMs: number): RawMessage | undefined {
+  if (_pendingOptimisticUserMessageId) {
+    const byId = messages.find((message) => message.id === _pendingOptimisticUserMessageId);
+    if (byId?.role === 'user') return byId;
+  }
   return [...messages].reverse().find(
-    (message) => message.role === 'user' && (!message.timestamp || Math.abs(toMs(message.timestamp) - userTimestampMs) < 5000),
+    (message) => message.role === 'user' && (!message.timestamp || Math.abs(toMs(message.timestamp) - userTimestampMs) < 10 * 60_000),
   );
 }
 
@@ -1633,6 +1643,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         });
         if (recentAssistant) {
           clearHistoryPoll();
+          clearPendingOptimisticUserMessage();
           set({ sending: false, activeRunId: null, pendingFinal: false });
         }
       }
@@ -1783,6 +1794,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         filePath: a.stagedPath,
       })),
     };
+    _pendingOptimisticUserMessageId = userMsg.id || null;
     set((s) => ({
       messages: [...s.messages, userMsg],
       sending: true,
@@ -1831,23 +1843,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
     _historyPollTimer = setTimeout(pollHistory, POLL_START_DELAY);
 
     const SAFETY_TIMEOUT_MS = 90_000;
+    const PENDING_FINAL_TIMEOUT_MS = 45_000;
     const checkStuck = () => {
       const state = get();
       if (!state.sending) return;
       if (state.streamingMessage || state.streamingText) return;
       if (state.pendingFinal) {
-        setTimeout(checkStuck, 10_000);
-        return;
+        const pendingSince = state.lastUserMessageAt ? Date.now() - toMs(state.lastUserMessageAt) : Date.now() - _lastChatEventAt;
+        const eventSilence = Date.now() - _lastChatEventAt;
+        if (pendingSince < PENDING_FINAL_TIMEOUT_MS && eventSilence < PENDING_FINAL_TIMEOUT_MS) {
+          setTimeout(checkStuck, 10_000);
+          return;
+        }
       }
       if (Date.now() - _lastChatEventAt < SAFETY_TIMEOUT_MS) {
         setTimeout(checkStuck, 10_000);
         return;
       }
       clearHistoryPoll();
+      clearPendingOptimisticUserMessage();
       set({
-        error: 'No response received from the model. The provider may be unavailable or the API key may have insufficient quota. Please check your provider settings.',
+        error: '模型长时间没有返回结果。请检查 New API 服务状态、API Key 或模型额度，然后重试。',
         sending: false,
         activeRunId: null,
+        pendingFinal: false,
         lastUserMessageAt: null,
       });
     };
@@ -1921,6 +1940,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         } else {
           clearHistoryPoll();
           clearErrorRecoveryTimer();
+          clearPendingOptimisticUserMessage();
           set({
             error: errorMsg,
             sending: false,
@@ -1939,6 +1959,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       } else {
         clearHistoryPoll();
         clearErrorRecoveryTimer();
+        clearPendingOptimisticUserMessage();
         set({
           error: errStr,
           sending: false,
@@ -1955,6 +1976,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   abortRun: async () => {
     clearHistoryPoll();
     clearErrorRecoveryTimer();
+    clearPendingOptimisticUserMessage();
     const { currentSessionKey } = get();
     set({ sending: false, streamingText: '', streamingMessage: null, pendingFinal: false, lastUserMessageAt: null, pendingToolImages: [] });
     set({ streamingTools: [] });
@@ -1997,6 +2019,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       } else if (msg.role || msg.content) {
         resolvedState = 'delta';
       }
+    }
+
+    if (resolvedState === 'error' && runId && !activeRunId && !get().sending) {
+      return;
     }
 
     // Only pause the history poll when we receive actual streaming data.
@@ -2162,6 +2188,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           // tool-use turns (thinking + tool blocks) from the Gateway's authoritative record.
           if (hasOutput && !toolOnly) {
             clearHistoryPoll();
+            clearPendingOptimisticUserMessage();
             void get().loadHistory(true);
           }
         } else {
@@ -2212,6 +2239,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             const state = get();
             if (state.sending && !state.streamingMessage) {
               clearHistoryPoll();
+              clearPendingOptimisticUserMessage();
               // Grace period expired with no recovery — finalize the error
               set({
                 sending: false,
@@ -2226,6 +2254,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         } else {
           clearErrorRecoveryTimer();
           clearHistoryPoll();
+          clearPendingOptimisticUserMessage();
           set({ sending: false, activeRunId: null, lastUserMessageAt: null });
         }
         break;
@@ -2233,6 +2262,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       case 'aborted': {
         clearHistoryPoll();
         clearErrorRecoveryTimer();
+        clearPendingOptimisticUserMessage();
         set({
           sending: false,
           activeRunId: null,

@@ -89,7 +89,7 @@ describe('useChatStore startup history retry', () => {
       { sessionKey: 'agent:main:main', limit: 200 },
       undefined,
     );
-    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 191_800);
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 289_800);
     setTimeoutSpy.mockRestore();
   });
 
@@ -258,5 +258,39 @@ describe('useChatStore startup history retry', () => {
     expect(useChatStore.getState().error).toBeNull();
     expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
+  });
+
+  it('does not duplicate the optimistic user message when gateway persists it late', async () => {
+    const { useChatStore } = await import('@/stores/chat');
+    const sentAt = Date.now();
+
+    useChatStore.setState({
+      currentSessionKey: 'agent:main:main',
+      currentAgentId: 'main',
+      sessions: [{ key: 'agent:main:main' }],
+      messages: [{ role: 'user', content: '你好', timestamp: sentAt / 1000, id: 'local-user' }],
+      sessionLabels: {},
+      sessionLastActivity: {},
+      sending: true,
+      activeRunId: 'run-late-history',
+      streamingText: '',
+      streamingMessage: null,
+      streamingTools: [],
+      pendingFinal: false,
+      lastUserMessageAt: sentAt,
+      pendingToolImages: [],
+      error: null,
+      loading: false,
+      thinkingLevel: null,
+    });
+
+    gatewayRpcMock.mockResolvedValueOnce({
+      messages: [{ role: 'user', content: '你好', timestamp: (sentAt + 45_000) / 1000, id: 'gateway-user' }],
+    });
+
+    await useChatStore.getState().loadHistory(true);
+
+    expect(useChatStore.getState().messages.filter((message) => message.role === 'user')).toHaveLength(1);
+    expect(useChatStore.getState().messages[0]?.id).toBe('gateway-user');
   });
 });

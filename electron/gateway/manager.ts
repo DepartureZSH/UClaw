@@ -57,6 +57,21 @@ import {
 import { classifyGatewayStderrMessage, recordGatewayStartupStderrLine } from './startup-stderr';
 import { runGatewayStartupSequence } from './startup-orchestrator';
 
+function parseEmbeddedRunErrorFromStderr(line: string): { runId: string; errorMessage: string } | null {
+  if (!line.includes('[agent/embedded]') || !line.includes('isError=true')) {
+    return null;
+  }
+
+  const runId = line.match(/\brunId=([^\s]+)/)?.[1];
+  const errorMatch = line.match(/\berror=(.*?)(?:\s+rawError=|$)/);
+  const errorMessage = errorMatch?.[1]?.trim();
+  if (!runId || !errorMessage) {
+    return null;
+  }
+
+  return { runId, errorMessage };
+}
+
 export interface GatewayStatus {
   state: GatewayLifecycleState;
   port: number;
@@ -996,6 +1011,15 @@ export class GatewayManager extends EventEmitter {
             logger.debug(`[Gateway stderr] (suppressed ${count} repeats) ${classified.normalized}`);
           }
           return;
+        }
+
+        const embeddedRunError = parseEmbeddedRunErrorFromStderr(line);
+        if (embeddedRunError) {
+          this.emit('chat:message', {
+            state: 'error',
+            runId: embeddedRunError.runId,
+            errorMessage: embeddedRunError.errorMessage,
+          });
         }
 
         if (classified.level === 'debug') {
