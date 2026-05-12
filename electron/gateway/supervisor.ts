@@ -2,7 +2,7 @@ import { app, utilityProcess } from 'electron';
 import path from 'path';
 import { existsSync } from 'fs';
 import { getOpenClawDir, getOpenClawEntryPath } from '../utils/paths';
-import { getUvMirrorEnv } from '../utils/uv-env';
+import { getUvRuntimeEnv } from '../utils/uv-env';
 import { isPythonReady, setupManagedPython } from '../utils/uv-setup';
 import { logger } from '../utils/logger';
 import { prependPathEntry } from '../utils/env-path';
@@ -282,7 +282,7 @@ export async function runOpenClawDoctorRepair(): Promise<boolean> {
     ? prependPathEntry(baseProcessEnv, binPath).env
     : baseProcessEnv;
 
-  const uvEnv = await getUvMirrorEnv();
+  const uvEnv = await getUvRuntimeEnv();
   const doctorArgs = ['doctor', '--fix', '--yes', '--non-interactive'];
   logger.info(
     `Running OpenClaw doctor repair (entry="${entryScript}", args="${doctorArgs.join(' ')}", cwd="${openclawDir}", bundledBin=${binPathExists ? 'yes' : 'no'})`,

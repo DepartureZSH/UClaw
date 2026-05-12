@@ -14,6 +14,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { homedir, hostname } from 'node:os';
 
 export const DATA_ROOT_ENV = 'UCLAW_DATA_ROOT';
+export const DATA_ROOT_SOURCE_ENV = 'UCLAW_DATA_ROOT_SOURCE';
 export const DATA_ROOT_ARG = '--uclaw-data-root';
 export const PORTABLE_DATA_ROOT_MARKER = 'uclaw-portable.json';
 
@@ -323,6 +324,7 @@ export function initializeDataRoot(app: ElectronAppLike): DataRootResolution {
     mkdirSync(resolution.openclawDir, { recursive: true });
     app.setPath('userData', resolution.uclawDir);
     process.env[DATA_ROOT_ENV] = resolution.dataRoot;
+    process.env[DATA_ROOT_SOURCE_ENV] = resolution.source;
 
     // UClaw no longer auto-imports legacy Roaming/AppData state. A fresh data
     // root must stay fresh, especially for USB packages moved between machines.

@@ -1,5 +1,8 @@
 import { app } from 'electron';
+import { mkdirSync } from 'fs';
+import { join } from 'path';
 import { request } from 'https';
+import { getConfiguredDataRoot } from './data-root';
 import { logger } from './logger';
 
 const UV_MIRROR_ENV: Record<string, string> = {
@@ -109,6 +112,35 @@ export async function shouldOptimizeNetwork(): Promise<boolean> {
 export async function getUvMirrorEnv(): Promise<Record<string, string>> {
   const isOptimized = await shouldOptimizeNetwork();
   return isOptimized ? { ...UV_MIRROR_ENV } : {};
+}
+
+export async function getUvRuntimeEnv(): Promise<Record<string, string>> {
+  const mirrorEnv = await getUvMirrorEnv();
+  const runtimeDir = join(getConfiguredDataRoot(), 'uclaw', 'runtime', 'uv');
+  const cacheDir = join(runtimeDir, 'cache');
+  const dataDir = join(runtimeDir, 'data');
+  const pythonInstallDir = join(runtimeDir, 'python');
+  const binDir = join(runtimeDir, 'bin');
+  const toolDir = join(runtimeDir, 'tools');
+
+  for (const dir of [cacheDir, dataDir, pythonInstallDir, binDir, toolDir]) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  return {
+    ...mirrorEnv,
+    UV_CACHE_DIR: cacheDir,
+    UV_PYTHON_INSTALL_DIR: pythonInstallDir,
+    UV_PYTHON_BIN_DIR: binDir,
+    UV_PYTHON_INSTALL_BIN: '0',
+    UV_PYTHON_INSTALL_REGISTRY: '0',
+    UV_TOOL_DIR: toolDir,
+    UV_TOOL_BIN_DIR: binDir,
+    UV_MANAGED_PYTHON: '1',
+    UV_NO_CONFIG: '1',
+    XDG_CACHE_HOME: cacheDir,
+    XDG_DATA_HOME: dataDir,
+  };
 }
 
 export async function warmupNetworkOptimization(): Promise<void> {

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { getOpenClawDir, getOpenClawEntryPath } from './paths';
 import { logger } from './logger';
-import { getUvMirrorEnv } from './uv-env';
+import { getUvRuntimeEnv } from './uv-env';
 
 const OPENCLAW_DOCTOR_TIMEOUT_MS = 60_000;
 const MAX_DOCTOR_OUTPUT_BYTES = 10 * 1024 * 1024;
@@ -95,7 +95,7 @@ async function runDoctorCommandWithArgs(
   const finalPath = binPathExists
     ? `${binPath}${path.delimiter}${process.env.PATH || ''}`
     : process.env.PATH || '';
-  const uvEnv = await getUvMirrorEnv();
+  const uvEnv = await getUvRuntimeEnv();
 
   logger.info(
     `Running OpenClaw doctor (mode=${mode}, entry="${entryScript}", args="${args.join(' ')}", cwd="${openclawDir}", bundledBin=${binPathExists ? 'yes' : 'no'})`,

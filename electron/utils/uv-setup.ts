@@ -2,7 +2,7 @@ import { app } from 'electron';
 import { execSync, spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { getUvMirrorEnv } from './uv-env';
+import { getUvRuntimeEnv } from './uv-env';
 import { logger } from './logger';
 import { quoteForCmd, needsWinShell } from './paths';
 
@@ -90,11 +90,13 @@ export async function installUv(): Promise<void> {
 export async function isPythonReady(): Promise<boolean> {
   const { bin: uvBin } = resolveUvBin();
   const useShell = needsWinShell(uvBin);
+  const uvEnv = await getUvRuntimeEnv();
 
   return new Promise<boolean>((resolve) => {
     try {
       const child = spawn(useShell ? quoteForCmd(uvBin) : uvBin, ['python', 'find', '3.12'], {
         shell: useShell,
+        env: { ...process.env, ...uvEnv },
         windowsHide: true,
       });
       child.on('close', (code) => resolve(code === 0));
@@ -118,8 +120,12 @@ async function runPythonInstall(
   return new Promise<void>((resolve, reject) => {
     const stderrChunks: string[] = [];
     const stdoutChunks: string[] = [];
+    const args = ['python', 'install', '3.12', '--no-bin'];
+    if (process.platform === 'win32') {
+      args.push('--no-registry');
+    }
 
-    const child = spawn(useShell ? quoteForCmd(uvBin) : uvBin, ['python', 'install', '3.12'], {
+    const child = spawn(useShell ? quoteForCmd(uvBin) : uvBin, args, {
       shell: useShell,
       env,
       windowsHide: true,
@@ -175,12 +181,12 @@ async function runPythonInstall(
  */
 export async function setupManagedPython(): Promise<void> {
   const { bin: uvBin, source } = resolveUvBin();
-  const uvEnv = await getUvMirrorEnv();
-  const hasMirror = Object.keys(uvEnv).length > 0;
+  const uvEnv = await getUvRuntimeEnv();
+  const hasMirror = Boolean(uvEnv.UV_PYTHON_INSTALL_MIRROR || uvEnv.UV_INDEX_URL);
 
   logger.info(
     `Setting up managed Python 3.12 ` +
-    `(uv=${uvBin}, source=${source}, arch=${process.arch}, mirror=${hasMirror})`
+    `(uv=${uvBin}, source=${source}, arch=${process.arch}, mirror=${hasMirror}, installDir=${uvEnv.UV_PYTHON_INSTALL_DIR})`
   );
 
   const baseEnv: Record<string, string | undefined> = { ...process.env };

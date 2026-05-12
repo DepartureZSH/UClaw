@@ -1,4 +1,5 @@
 import type { StartupStepId } from '../../shared/startup';
+import { DATA_ROOT_SOURCE_ENV } from './data-root';
 
 export interface GatewayStartupConfig {
   waitForPortFreeTimeoutMs: number;
@@ -74,6 +75,22 @@ export const DEFAULT_STARTUP_RUNTIME_CONFIG: StartupRuntimeConfig = {
   },
 };
 
+export const PORTABLE_DATA_ROOT_STARTUP_RUNTIME_CONFIG: StartupRuntimeConfig = {
+  ...DEFAULT_STARTUP_RUNTIME_CONFIG,
+  stepTimeouts: {
+    ...DEFAULT_STARTUP_RUNTIME_CONFIG.stepTimeouts,
+    'gateway-start': 240_000,
+  },
+  gateway: {
+    ...DEFAULT_STARTUP_RUNTIME_CONFIG.gateway,
+    readyWaitTimeoutMs: 180_000,
+    connectHandshakeTimeoutMs: 30_000,
+    subsystemReadyFallbackMs: 90_000,
+    subsystemReadyProbeInitialDelayMs: 1_000,
+    subsystemReadyProbeTimeoutMs: 10_000,
+  },
+};
+
 function normalizePositiveInteger(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
     return Math.round(value);
@@ -95,7 +112,9 @@ function envNumber(key: string): number | undefined {
 export function resolveGatewayStartupConfig(
   overrides?: Partial<GatewayStartupConfig>,
 ): GatewayStartupConfig {
-  const gateway = { ...DEFAULT_STARTUP_RUNTIME_CONFIG.gateway };
+  const gateway = {
+    ...(isExplicitDataRootSource() ? PORTABLE_DATA_ROOT_STARTUP_RUNTIME_CONFIG : DEFAULT_STARTUP_RUNTIME_CONFIG).gateway,
+  };
 
   for (const key of Object.keys(gateway) as Array<keyof GatewayStartupConfig>) {
     const override = normalizePositiveInteger(overrides?.[key]);
@@ -115,7 +134,10 @@ export function resolveGatewayStartupConfig(
 }
 
 export function resolveStartupRuntimeConfig(source?: StartupConfigSource | null): StartupRuntimeConfig {
-  const stepTimeouts = { ...DEFAULT_STARTUP_RUNTIME_CONFIG.stepTimeouts };
+  const defaults = isExplicitDataRootSource()
+    ? PORTABLE_DATA_ROOT_STARTUP_RUNTIME_CONFIG
+    : DEFAULT_STARTUP_RUNTIME_CONFIG;
+  const stepTimeouts = { ...defaults.stepTimeouts };
 
   for (const step of Object.keys(stepTimeouts) as StartupStepId[]) {
     const override = normalizePositiveInteger(source?.startup?.stepTimeouts?.[step]);
@@ -135,4 +157,9 @@ export function resolveStartupRuntimeConfig(source?: StartupConfigSource | null)
     stepTimeouts,
     gateway: resolveGatewayStartupConfig(source?.startup?.gateway),
   };
+}
+
+function isExplicitDataRootSource(): boolean {
+  const source = process.env[DATA_ROOT_SOURCE_ENV];
+  return source === 'argv' || source === 'env' || source === 'portable-marker';
 }

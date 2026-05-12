@@ -19,7 +19,7 @@ import { getAllSettings } from '../utils/store';
 import { getApiKey, getDefaultProvider, getProvider } from '../utils/secure-storage';
 import { getProviderEnvVar, getKeyableProviderTypes } from '../utils/provider-registry';
 import { getOpenClawDir, getOpenClawEntryPath, isOpenClawPresent, getOpenClawConfigDir } from '../utils/paths';
-import { getUvMirrorEnv } from '../utils/uv-env';
+import { getUvRuntimeEnv } from '../utils/uv-env';
 import { cleanupDanglingWeChatPluginState, listConfiguredChannelsFromConfig } from '../utils/channel-config';
 import { sanitizeOpenClawConfig, batchSyncConfigFields, getOpenClawRuntimeApiKey } from '../utils/openclaw-auth';
 import { buildProxyEnv, resolveProxySettings } from '../utils/proxy';
@@ -718,7 +718,7 @@ export async function prepareGatewayLaunchContext(port: number): Promise<Gateway
   const { providerEnv, loadedProviderKeyCount } = await loadProviderEnv();
 
   const { skipChannels, channelStartupSummary } = await resolveChannelStartupPolicy();
-  const uvEnv = await getUvMirrorEnv();
+  const uvEnv = await getUvRuntimeEnv();
   const proxyEnv = buildProxyEnv(appSettings);
   const resolvedProxy = resolveProxySettings(appSettings);
   const proxySummary = appSettings.proxyEnabled

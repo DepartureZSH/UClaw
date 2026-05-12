@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_STARTUP_RUNTIME_CONFIG,
+  PORTABLE_DATA_ROOT_STARTUP_RUNTIME_CONFIG,
   resolveGatewayStartupConfig,
   resolveStartupRuntimeConfig,
 } from '@electron/utils/startup-config';
@@ -10,6 +11,7 @@ const ENV_KEYS = [
   'UCLAW_STARTUP_TIMEOUT_GATEWAY_START_MS',
   'UCLAW_GATEWAY_READY_WAIT_TIMEOUT_MS',
   'UCLAW_GATEWAY_CONNECT_HANDSHAKE_TIMEOUT_MS',
+  'UCLAW_DATA_ROOT_SOURCE',
 ];
 
 describe('startup config', () => {
@@ -43,6 +45,19 @@ describe('startup config', () => {
     expect(config.stepTimeouts['gateway-start']).toBe(90_000);
     expect(config.gateway.readyWaitTimeoutMs).toBe(80_000);
     expect(config.gateway.connectHandshakeTimeoutMs).toBe(35_000);
+  });
+
+  it('uses more patient gateway startup defaults for explicit or portable data roots', () => {
+    process.env.UCLAW_DATA_ROOT_SOURCE = 'portable-marker';
+
+    const config = resolveStartupRuntimeConfig();
+
+    expect(config.stepTimeouts['gateway-start']).toBe(
+      PORTABLE_DATA_ROOT_STARTUP_RUNTIME_CONFIG.stepTimeouts['gateway-start'],
+    );
+    expect(config.gateway.readyWaitTimeoutMs).toBe(
+      PORTABLE_DATA_ROOT_STARTUP_RUNTIME_CONFIG.gateway.readyWaitTimeoutMs,
+    );
   });
 
   it('lets environment variables override persisted values', () => {

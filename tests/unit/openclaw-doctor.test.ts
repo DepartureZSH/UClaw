@@ -6,14 +6,14 @@ const MAX_DOCTOR_OUTPUT_BYTES = 10 * 1024 * 1024;
 const {
   mockExistsSync,
   mockFork,
-  mockGetUvMirrorEnv,
+  mockGetUvRuntimeEnv,
   mockLoggerWarn,
   mockLoggerInfo,
   mockLoggerError,
 } = vi.hoisted(() => ({
   mockExistsSync: vi.fn(),
   mockFork: vi.fn(),
-  mockGetUvMirrorEnv: vi.fn(),
+  mockGetUvRuntimeEnv: vi.fn(),
   mockLoggerWarn: vi.fn(),
   mockLoggerInfo: vi.fn(),
   mockLoggerError: vi.fn(),
@@ -46,7 +46,7 @@ vi.mock('@electron/utils/paths', () => ({
 }));
 
 vi.mock('@electron/utils/uv-env', () => ({
-  getUvMirrorEnv: mockGetUvMirrorEnv,
+  getUvRuntimeEnv: mockGetUvRuntimeEnv,
 }));
 
 vi.mock('@electron/utils/logger', () => ({
@@ -69,7 +69,7 @@ describe('openclaw doctor output handling', () => {
     vi.resetModules();
 
     mockExistsSync.mockReturnValue(true);
-    mockGetUvMirrorEnv.mockResolvedValue({});
+    mockGetUvRuntimeEnv.mockResolvedValue({});
   });
 
   it('collects normal output under the buffer limit', async () => {

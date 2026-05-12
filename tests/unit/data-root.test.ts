@@ -217,8 +217,10 @@ describe('data root', () => {
       },
     };
 
-    const previousEnv = process.env.UCLAW_DATA_ROOT;
+    const previousDataRootEnv = process.env.UCLAW_DATA_ROOT;
+    const previousDataRootSourceEnv = process.env.UCLAW_DATA_ROOT_SOURCE;
     delete process.env.UCLAW_DATA_ROOT;
+    delete process.env.UCLAW_DATA_ROOT_SOURCE;
     try {
       const initialized = initializeDataRoot(appLike);
       try {
@@ -228,10 +230,15 @@ describe('data root', () => {
         initialized.releaseDataRootLock?.();
       }
     } finally {
-      if (previousEnv === undefined) {
+      if (previousDataRootEnv === undefined) {
         delete process.env.UCLAW_DATA_ROOT;
       } else {
-        process.env.UCLAW_DATA_ROOT = previousEnv;
+        process.env.UCLAW_DATA_ROOT = previousDataRootEnv;
+      }
+      if (previousDataRootSourceEnv === undefined) {
+        delete process.env.UCLAW_DATA_ROOT_SOURCE;
+      } else {
+        process.env.UCLAW_DATA_ROOT_SOURCE = previousDataRootSourceEnv;
       }
     }
   });
