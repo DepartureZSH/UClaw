@@ -365,7 +365,7 @@ pnpm run package:portable:dual  # 构建推荐的双分区便携版布局
 
 在无头 Linux 环境下，Electron 测试需要显示服务；可使用 `xvfb-run -a pnpm run test:e2e`。
 
-制作 U 盘/移动硬盘版本时，推荐使用 [`docs/portable-usb.md`](docs/portable-usb.md) 中的双分区布局：macOS `.app` 放在 APFS，Windows/Linux 程序和共享 UClaw data/workspace 放在 ExFAT。应用不再通过附近的 `data/` 文件夹自动判断“便携模式”；启动器会显式传入 `--uclaw-data-root`，让安装版、移动盘版和 E2E 测试共用同一套数据目录逻辑。如果 macOS 提示 App Translocation，请参考 [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md)。
+制作 U 盘/移动硬盘版本时，推荐使用 [`docs/portable-usb.md`](docs/portable-usb.md) 中的双分区布局：macOS `.app` 放在 APFS，Windows/Linux 程序和共享 UClaw data/workspace 放在 ExFAT。启动器会显式传入 `--uclaw-data-root`；GitHub Windows `.zip` 也会带便携标记，直接双击 `UClaw.exe` 时使用旁边的 `data/` 目录。新的数据目录不会自动导入旧的 Roaming/UClaw 应用数据。如果 macOS 提示 App Translocation，请参考 [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md)。
 
 ### 通信回归检查
 

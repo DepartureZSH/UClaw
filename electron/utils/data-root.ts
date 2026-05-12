@@ -15,6 +15,7 @@ import { homedir, hostname } from 'node:os';
 
 export const DATA_ROOT_ENV = 'UCLAW_DATA_ROOT';
 export const DATA_ROOT_ARG = '--uclaw-data-root';
+export const PORTABLE_DATA_ROOT_MARKER = 'uclaw-portable.json';
 
 type ElectronAppLike = Pick<typeof import('electron').app, 'getPath' | 'setPath'>;
 
@@ -22,7 +23,7 @@ export interface DataRootResolution {
   dataRoot: string;
   uclawDir: string;
   openclawDir: string;
-  source: 'argv' | 'env' | 'default';
+  source: 'argv' | 'env' | 'portable-marker' | 'default';
   lockPath?: string;
   releaseDataRootLock?: () => void;
 }
@@ -192,19 +193,47 @@ function readDataRootArg(argv: string[] = process.argv): string | null {
   return null;
 }
 
+function readPortableMarkerDataRoot(exePath: string): string | null {
+  const markerPath = join(dirname(exePath), PORTABLE_DATA_ROOT_MARKER);
+  if (!existsSync(markerPath)) return null;
+
+  try {
+    const parsed = JSON.parse(readFileSync(markerPath, 'utf8')) as {
+      schema?: unknown;
+      version?: unknown;
+      dataRoot?: unknown;
+    };
+    if (
+      parsed.schema !== 'uclaw-portable-data-root'
+      || parsed.version !== 1
+      || typeof parsed.dataRoot !== 'string'
+    ) {
+      throw new Error('unexpected marker schema');
+    }
+    return normalizeRootPath(parsed.dataRoot, exePath);
+  } catch (error) {
+    throw new Error(`portable data root marker is invalid: ${markerPath}`, { cause: error });
+  }
+}
+
 export function resolveDataRoot(options: ResolveDataRootOptions): DataRootResolution {
   const argRoot = readDataRootArg(options.argv);
   const envRoot = process.env[DATA_ROOT_ENV]?.trim() || null;
   const configuredRoot = argRoot ?? envRoot;
+  const portableMarkerRoot = configuredRoot === null
+    ? readPortableMarkerDataRoot(options.exePath)
+    : null;
   const dataRoot = configuredRoot !== null
     ? normalizeRootPath(configuredRoot, options.exePath)
-    : resolve(dirname(options.defaultUserDataDir));
+    : (portableMarkerRoot ?? resolve(dirname(options.defaultUserDataDir)));
 
   return {
     dataRoot,
     uclawDir: join(dataRoot, 'uclaw'),
     openclawDir: join(dataRoot, '.openclaw'),
-    source: argRoot !== null ? 'argv' : (envRoot ? 'env' : 'default'),
+    source: argRoot !== null
+      ? 'argv'
+      : (envRoot ? 'env' : (portableMarkerRoot ? 'portable-marker' : 'default')),
   };
 }
 
@@ -295,12 +324,9 @@ export function initializeDataRoot(app: ElectronAppLike): DataRootResolution {
     app.setPath('userData', resolution.uclawDir);
     process.env[DATA_ROOT_ENV] = resolution.dataRoot;
 
-    migrateLegacyStorage({
-      dataRoot: resolution.dataRoot,
-      uclawDir: resolution.uclawDir,
-      openclawDir: resolution.openclawDir,
-      legacyUserDataDir,
-    });
+    // UClaw no longer auto-imports legacy Roaming/AppData state. A fresh data
+    // root must stay fresh, especially for USB packages moved between machines.
+    // Explicit import can be added later as a user-confirmed repair action.
   } catch (error) {
     dataRootLock.release();
     throw error;

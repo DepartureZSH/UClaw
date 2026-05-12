@@ -182,6 +182,10 @@
   Delete "$INSTDIR\Uninstall UClaw.exe"
   SetFileAttributes "$INSTDIR\Uninstall ClawX.exe" NORMAL
   Delete "$INSTDIR\Uninstall ClawX.exe"
+  ; The Windows zip build keeps this marker so direct double-click launches
+  ; use .\data. Installed builds should continue using the system data root.
+  SetFileAttributes "$INSTDIR\uclaw-portable.json" NORMAL
+  Delete "$INSTDIR\uclaw-portable.json"
 
   ; Pre-emptively remove the old uninstall registry entry so that
   ; electron-builder's uninstallOldVersion skips the old uninstaller entirely.
@@ -239,6 +243,12 @@
 !macroend
 
 !macro customInstall
+  ; The zip package uses this marker for direct portable launches. NSIS installs
+  ; should not keep it after extraction, otherwise installed builds would also
+  ; use $INSTDIR\data instead of the normal system data root.
+  SetFileAttributes "$INSTDIR\uclaw-portable.json" NORMAL
+  Delete "$INSTDIR\uclaw-portable.json"
+
   ; Async cleanup of old dirs left by the rename loop in customCheckAppRunning.
   ; Wait 60s before starting deletion to avoid I/O contention with UClaw's
   ; first launch (Windows Defender scan, ASAR mapping, etc.).

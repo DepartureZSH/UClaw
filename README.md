@@ -362,7 +362,7 @@ pnpm run package:portable:dual  # Build the recommended dual-partition portable 
 
 On headless Linux, run Electron tests under a display server such as `xvfb-run -a pnpm run test:e2e`.
 
-For USB/hard-drive builds, prefer the dual-partition layout documented in [`docs/portable-usb.md`](docs/portable-usb.md). macOS `.app` bundles should live on APFS, while Windows/Linux builds and shared UClaw data/workspace can live on ExFAT. The app no longer auto-detects a portable mode from nearby folders; launchers pass `--uclaw-data-root` explicitly so installation, USB, and E2E runs share the same data-root behavior. If macOS reports App Translocation, see [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md).
+For USB/hard-drive builds, prefer the dual-partition layout documented in [`docs/portable-usb.md`](docs/portable-usb.md). macOS `.app` bundles should live on APFS, while Windows/Linux builds and shared UClaw data/workspace can live on ExFAT. Launchers pass `--uclaw-data-root` explicitly; the GitHub Windows `.zip` also includes a portable marker so direct `UClaw.exe` launches use the adjacent `data/` directory. New data roots no longer auto-import old Roaming/UClaw app data. If macOS reports App Translocation, see [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md).
 
 ### Communication Regression Checks
 

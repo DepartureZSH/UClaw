@@ -48,11 +48,16 @@ Startup priority is:
 
 1. `--uclaw-data-root <path>` or `--uclaw-data-root=<path>`
 2. `UCLAW_DATA_ROOT`
-3. the normal Electron app data location
+3. a packaged `uclaw-portable.json` marker next to the executable
+4. the normal Electron app data location
 
 The app does not import the user's standalone `~/.openclaw` directory into this
 data root. If the user selects a workspace during Setup, OpenClaw runtime files
 continue to live under `<workspace>/.openclaw`.
+
+UClaw also does not auto-import old `Roaming\UClaw` or legacy Electron app data
+into a new data root. A new USB/zip data root starts clean, so it cannot
+silently inherit a workspace path from a previous installation on the computer.
 
 ## Build the layout
 
@@ -105,6 +110,12 @@ The launcher starts the Windows executable and passes the shared data root:
 ```cmd
 windows\UClaw.exe --uclaw-data-root "%SCRIPT_DIR%data"
 ```
+
+The GitHub Windows `.zip` artifact also contains `uclaw-portable.json`. If a
+user extracts that zip and double-clicks `UClaw.exe` directly, UClaw uses
+`.\data` beside the executable as its data root. The NSIS installer removes this
+marker after installation, so installed builds keep using the normal system data
+location.
 
 ## Linux launch
 

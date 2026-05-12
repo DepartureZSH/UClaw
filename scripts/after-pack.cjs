@@ -19,7 +19,7 @@
  *      @mariozechner/clipboard).
  */
 
-const { cpSync, existsSync, readdirSync, rmSync, statSync, mkdirSync, realpathSync } = require('fs');
+const { cpSync, existsSync, readdirSync, rmSync, statSync, mkdirSync, realpathSync, writeFileSync } = require('fs');
 const { join, dirname, basename, relative } = require('path');
 
 // On Windows, paths in pnpm's virtual store can exceed the default MAX_PATH
@@ -759,6 +759,14 @@ exports.default = async function afterPack(context) {
   // 1-byte package.json files. Keep electron-builder's default temp extraction
   // + CopyFiles path for NSIS, and provide a Windows zip target for USB use.
   if (platform === 'win32') {
+    const portableMarkerPath = join(appOutDir, 'uclaw-portable.json');
+    writeFileSync(portableMarkerPath, `${JSON.stringify({
+      schema: 'uclaw-portable-data-root',
+      version: 1,
+      dataRoot: 'data',
+    }, null, 2)}\n`, 'utf8');
+    console.log(`[after-pack] ✅ Wrote Windows zip portable data-root marker: ${portableMarkerPath}`);
+
     const commonNsh = join(
       __dirname, '..', 'node_modules', 'app-builder-lib',
       'templates', 'nsis', 'common.nsh'

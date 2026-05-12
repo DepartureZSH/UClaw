@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   acquireDataRootLock,
   assertDataRootWritable,
+  initializeDataRoot,
   migrateLegacyStorage,
   resolveDataRoot,
 } from '../../electron/utils/data-root';
@@ -55,6 +56,44 @@ describe('data root', () => {
     });
 
     expect(resolved.dataRoot).toBe(resolve(dirname('/Volumes/UClaw/windows/UClaw.exe'), '../data'));
+  });
+
+  it('uses a portable marker next to the executable when no explicit data root is provided', async () => {
+    const exeDir = await makeTempDir('uclaw-portable-exe-');
+    const exePath = join(exeDir, 'UClaw.exe');
+    await writeFile(join(exeDir, 'uclaw-portable.json'), `${JSON.stringify({
+      schema: 'uclaw-portable-data-root',
+      version: 1,
+      dataRoot: 'data',
+    })}\n`, 'utf8');
+
+    const resolved = resolveDataRoot({
+      argv: ['UClaw.exe'],
+      defaultUserDataDir: 'C:\\Users\\me\\AppData\\Roaming\\UClaw',
+      exePath,
+    });
+
+    expect(resolved.source).toBe('portable-marker');
+    expect(resolved.dataRoot).toBe(resolve(exeDir, 'data'));
+  });
+
+  it('lets explicit startup arguments override the portable marker', async () => {
+    const exeDir = await makeTempDir('uclaw-portable-exe-');
+    const exePath = join(exeDir, 'UClaw.exe');
+    await writeFile(join(exeDir, 'uclaw-portable.json'), `${JSON.stringify({
+      schema: 'uclaw-portable-data-root',
+      version: 1,
+      dataRoot: 'data',
+    })}\n`, 'utf8');
+
+    const resolved = resolveDataRoot({
+      argv: ['UClaw.exe', '--uclaw-data-root', '../explicit-data'],
+      defaultUserDataDir: 'C:\\Users\\me\\AppData\\Roaming\\UClaw',
+      exePath,
+    });
+
+    expect(resolved.source).toBe('argv');
+    expect(resolved.dataRoot).toBe(resolve(dirname(exePath), '../explicit-data'));
   });
 
   it('rejects empty startup argument paths', () => {
@@ -153,6 +192,48 @@ describe('data root', () => {
     expect(existsSync(first.sentinelPath)).toBe(true);
     expect(readFileSync(join(uclawDir, 'settings.json'), 'utf8')).toBe('{"new":true}');
     expect(readFileSync(join(uclawDir, 'uclaw-providers.json'), 'utf8')).toBe('{"providers":true}');
+  });
+
+  it('does not auto-migrate legacy Roaming UClaw files during data-root initialization', async () => {
+    const legacyUserData = await makeTempDir('uclaw-legacy-user-data-');
+    const exeDir = await makeTempDir('uclaw-portable-exe-');
+    await writeFile(join(legacyUserData, 'settings.json'), '{"workspaceDir":"E:/old/workspace"}', 'utf8');
+    await writeFile(join(exeDir, 'uclaw-portable.json'), `${JSON.stringify({
+      schema: 'uclaw-portable-data-root',
+      version: 1,
+      dataRoot: 'data',
+    })}\n`, 'utf8');
+
+    let userDataPath = legacyUserData;
+    const appLike = {
+      getPath(name: string) {
+        if (name === 'userData') return userDataPath;
+        if (name === 'exe') return join(exeDir, 'UClaw.exe');
+        throw new Error(`unexpected path request: ${name}`);
+      },
+      setPath(name: string, value: string) {
+        if (name !== 'userData') throw new Error(`unexpected path set: ${name}`);
+        userDataPath = value;
+      },
+    };
+
+    const previousEnv = process.env.UCLAW_DATA_ROOT;
+    delete process.env.UCLAW_DATA_ROOT;
+    try {
+      const initialized = initializeDataRoot(appLike);
+      try {
+        expect(initialized.source).toBe('portable-marker');
+        expect(existsSync(join(initialized.uclawDir, 'settings.json'))).toBe(false);
+      } finally {
+        initialized.releaseDataRootLock?.();
+      }
+    } finally {
+      if (previousEnv === undefined) {
+        delete process.env.UCLAW_DATA_ROOT;
+      } else {
+        process.env.UCLAW_DATA_ROOT = previousEnv;
+      }
+    }
   });
 
   it('does not import standalone OpenClaw config unless explicitly requested', async () => {
