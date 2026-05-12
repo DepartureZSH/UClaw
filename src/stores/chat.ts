@@ -1118,6 +1118,15 @@ function isRecoverableChatSendTimeout(error: string): boolean {
   return error.includes('RPC timeout: chat.send');
 }
 
+function isAuthFailureMessage(value: unknown): boolean {
+  const message = String(value || '').toLowerCase();
+  return message.includes('http 401')
+    || message.includes('invalid token')
+    || message.includes('unauthorized')
+    || message.includes('auth profile failure')
+    || message.includes('api key');
+}
+
 function collectToolUpdates(message: unknown, eventState: string): ToolStatus[] {
   const updates: ToolStatus[] = [];
   const toolResultUpdate = extractToolResultUpdate(message, eventState);
@@ -1748,6 +1757,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   ) => {
     const trimmed = text.trim();
     if (!trimmed && (!attachments || attachments.length === 0)) return;
+    if (get().sending) return;
 
     const targetSessionKey = resolveMainSessionKeyForAgent(targetAgentId) ?? get().currentSessionKey;
 
@@ -1910,7 +1920,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
           console.warn(`[sendMessage] Recoverable chat.send timeout, keeping poll alive: ${errorMsg}`);
         } else {
           clearHistoryPoll();
-          set({ error: errorMsg, sending: false });
+          clearErrorRecoveryTimer();
+          set({
+            error: errorMsg,
+            sending: false,
+            activeRunId: null,
+            pendingFinal: false,
+            lastUserMessageAt: null,
+          });
         }
       } else if (result.result?.runId) {
         set({ activeRunId: result.result.runId });
@@ -1921,7 +1938,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
         console.warn(`[sendMessage] Recoverable chat.send timeout, keeping poll alive: ${errStr}`);
       } else {
         clearHistoryPoll();
-        set({ error: errStr, sending: false });
+        clearErrorRecoveryTimer();
+        set({
+          error: errStr,
+          sending: false,
+          activeRunId: null,
+          pendingFinal: false,
+          lastUserMessageAt: null,
+        });
       }
     }
   },
@@ -2150,6 +2174,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       case 'error': {
         const errorMsg = String(event.errorMessage || 'An error occurred');
         const wasSending = get().sending;
+        const isFatalAuthError = isAuthFailureMessage(errorMsg);
 
         // Snapshot the current streaming message into messages[] so partial
         // content ("Let me get that written down...") is preserved in the UI
@@ -2179,7 +2204,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // after transient API failures (e.g. "terminated"). Keep `sending`
         // true for a grace period so that recovery events are processed and
         // the agent-phase-completion handler can still trigger loadHistory.
-        if (wasSending) {
+        if (wasSending && !isFatalAuthError) {
           clearErrorRecoveryTimer();
           const ERROR_RECOVERY_GRACE_MS = 15_000;
           _errorRecoveryTimer = setTimeout(() => {
@@ -2199,6 +2224,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             }
           }, ERROR_RECOVERY_GRACE_MS);
         } else {
+          clearErrorRecoveryTimer();
           clearHistoryPoll();
           set({ sending: false, activeRunId: null, lastUserMessageAt: null });
         }

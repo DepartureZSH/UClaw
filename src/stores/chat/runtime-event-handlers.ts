@@ -20,6 +20,15 @@ import {
 import type { AttachedFileMeta, RawMessage } from './types';
 import type { ChatGet, ChatSet } from './store-api';
 
+function isAuthFailureMessage(value: unknown): boolean {
+  const message = String(value || '').toLowerCase();
+  return message.includes('http 401')
+    || message.includes('invalid token')
+    || message.includes('unauthorized')
+    || message.includes('auth profile failure')
+    || message.includes('api key');
+}
+
 export function handleRuntimeEventState(
   set: ChatSet,
   get: ChatGet,
@@ -201,6 +210,7 @@ export function handleRuntimeEventState(
         case 'error': {
           const errorMsg = String(event.errorMessage || 'An error occurred');
           const wasSending = get().sending;
+          const isFatalAuthError = isAuthFailureMessage(errorMsg);
 
           // Snapshot the current streaming message into messages[] so partial
           // content ("Let me get that written down...") is preserved in the UI
@@ -230,7 +240,7 @@ export function handleRuntimeEventState(
           // after transient API failures (e.g. "terminated"). Keep `sending`
           // true for a grace period so that recovery events are processed and
           // the agent-phase-completion handler can still trigger loadHistory.
-          if (wasSending) {
+          if (wasSending && !isFatalAuthError) {
             clearErrorRecoveryTimer();
             const ERROR_RECOVERY_GRACE_MS = 15_000;
             setErrorRecoveryTimer(setTimeout(() => {
@@ -250,6 +260,7 @@ export function handleRuntimeEventState(
               }
             }, ERROR_RECOVERY_GRACE_MS));
           } else {
+            clearErrorRecoveryTimer();
             clearHistoryPoll();
             set({ sending: false, activeRunId: null, lastUserMessageAt: null });
           }

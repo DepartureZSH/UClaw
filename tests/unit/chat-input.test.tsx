@@ -135,4 +135,15 @@ describe('ChatInput agent targeting', () => {
 
     expect(onSend).toHaveBeenCalledWith('Hello direct agent', undefined, 'research');
   });
+
+  it('ignores rapid duplicate submits before the sending prop updates', () => {
+    const onSend = vi.fn();
+    render(<ChatInput onSend={onSend} />);
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Hello twice' } });
+    fireEvent.click(screen.getByTitle('Send'));
+    fireEvent.click(screen.getByTitle('Send'));
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
 });

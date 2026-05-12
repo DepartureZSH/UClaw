@@ -89,20 +89,30 @@ export async function installUv(): Promise<void> {
  */
 export async function isPythonReady(): Promise<boolean> {
   const { bin: uvBin } = resolveUvBin();
-  const useShell = needsWinShell(uvBin);
   const uvEnv = await getUvRuntimeEnv();
 
-  return new Promise<boolean>((resolve) => {
+  const found = await findManagedPythonPath(uvBin, { ...process.env, ...uvEnv });
+  return Boolean(found);
+}
+
+async function findManagedPythonPath(
+  uvBin: string,
+  env: Record<string, string | undefined>,
+): Promise<string> {
+  const useShell = needsWinShell(uvBin);
+  return new Promise<string>((resolve) => {
     try {
       const child = spawn(useShell ? quoteForCmd(uvBin) : uvBin, ['python', 'find', '3.12'], {
         shell: useShell,
-        env: { ...process.env, ...uvEnv },
+        env,
         windowsHide: true,
       });
-      child.on('close', (code) => resolve(code === 0));
-      child.on('error', () => resolve(false));
+      let output = '';
+      child.stdout?.on('data', (data) => { output += data; });
+      child.on('close', (code) => resolve(code === 0 ? output.trim() : ''));
+      child.on('error', () => resolve(''));
     } catch {
-      resolve(false);
+      resolve('');
     }
   });
 }
@@ -195,6 +205,14 @@ export async function setupManagedPython(): Promise<void> {
   try {
     await runPythonInstall(uvBin, { ...baseEnv, ...uvEnv }, hasMirror ? 'mirror' : 'default');
   } catch (firstError) {
+    const existingPython = await findManagedPythonPath(uvBin, { ...baseEnv, ...uvEnv });
+    if (existingPython) {
+      logger.info(
+        `Python install reported a recoverable post-install error, but managed Python is available at: ${existingPython}`,
+      );
+      return;
+    }
+
     logger.warn('Python install attempt 1 failed:', firstError);
 
     if (hasMirror) {

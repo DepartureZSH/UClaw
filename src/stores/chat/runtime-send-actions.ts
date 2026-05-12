@@ -48,6 +48,7 @@ export function createRuntimeSendActions(set: ChatSet, get: ChatGet): Pick<Runti
     ) => {
       const trimmed = text.trim();
       if (!trimmed && (!attachments || attachments.length === 0)) return;
+      if (get().sending) return;
 
       const targetSessionKey = resolveMainSessionKeyForAgent(targetAgentId) ?? get().currentSessionKey;
       if (targetSessionKey !== get().currentSessionKey) {
@@ -222,13 +223,27 @@ export function createRuntimeSendActions(set: ChatSet, get: ChatGet): Pick<Runti
 
         if (!result.success) {
           clearHistoryPoll();
-          set({ error: result.error || 'Failed to send message', sending: false });
+          clearErrorRecoveryTimer();
+          set({
+            error: result.error || 'Failed to send message',
+            sending: false,
+            activeRunId: null,
+            pendingFinal: false,
+            lastUserMessageAt: null,
+          });
         } else if (result.result?.runId) {
           set({ activeRunId: result.result.runId });
         }
       } catch (err) {
         clearHistoryPoll();
-        set({ error: String(err), sending: false });
+        clearErrorRecoveryTimer();
+        set({
+          error: String(err),
+          sending: false,
+          activeRunId: null,
+          pendingFinal: false,
+          lastUserMessageAt: null,
+        });
       }
     },
 

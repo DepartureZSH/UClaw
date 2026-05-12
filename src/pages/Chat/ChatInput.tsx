@@ -93,6 +93,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
+  const submitLockedRef = useRef(false);
   const gatewayStatus = useGatewayStore((s) => s.status);
   const agents = useAgentsStore((s) => s.agents);
   const currentAgentId = useChatStore((s) => s.currentAgentId);
@@ -124,6 +125,12 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
       textareaRef.current.focus();
     }
   }, [disabled]);
+
+  useEffect(() => {
+    if (!sending) {
+      submitLockedRef.current = false;
+    }
+  }, [sending]);
 
   useEffect(() => {
     if (!targetAgentId) return;
@@ -290,6 +297,8 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false, i
 
   const handleSend = useCallback(() => {
     if (!canSend) return;
+    if (submitLockedRef.current) return;
+    submitLockedRef.current = true;
     const readyAttachments = attachments.filter(a => a.status === 'ready');
     // Capture values before clearing — clear input immediately for snappy UX,
     // but keep attachments available for the async send
