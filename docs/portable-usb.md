@@ -59,8 +59,11 @@ UClaw also does not auto-import old `Roaming\UClaw` or legacy Electron app data
 into a new data root. A new USB/zip data root starts clean, so it cannot
 silently inherit a workspace path from a previous installation on the computer.
 
-Bundled `uv` and managed CPython runtime files also follow the data root under
-`<dataRoot>/uclaw/runtime/uv`. They should not be installed into the computer's
+Bundled `uv` follows the application package. Windows release builds also bundle
+managed CPython 3.12 under the application resources, so first-run Setup should
+not download CPython when using the official Windows `.zip` artifact. Runtime
+caches, tools, and fallback Python installs still live under
+`<dataRoot>/uclaw/runtime/uv`; they should not be installed into the computer's
 user-level `%APPDATA%\uv` or `~/.local` directories during UClaw startup.
 
 ## Build the layout

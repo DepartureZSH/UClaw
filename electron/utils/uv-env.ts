@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { request } from 'https';
 import { getConfiguredDataRoot } from './data-root';
@@ -17,6 +17,28 @@ const GOOGLE_204_TIMEOUT_MS = 2000;
 let cachedOptimized: boolean | null = null;
 let cachedPromise: Promise<boolean> | null = null;
 let loggedOnce = false;
+
+function getPlatformTarget(): string {
+  return `${process.platform}-${process.arch}`;
+}
+
+export function getBundledPythonInstallDir(): string {
+  const target = getPlatformTarget();
+  return app.isPackaged
+    ? join(process.resourcesPath, 'resources', 'python', target)
+    : join(process.cwd(), 'resources', 'python', target);
+}
+
+function hasBundledPythonInstall(dir: string): boolean {
+  try {
+    if (!existsSync(dir)) return false;
+    return readdirSync(dir, { withFileTypes: true }).some((entry) => (
+      entry.isDirectory() && entry.name.startsWith('cpython-')
+    ));
+  } catch {
+    return false;
+  }
+}
 
 function getLocaleAndTimezone(): { locale: string; timezone: string } {
   const locale = app.getLocale?.() || '';
@@ -114,16 +136,20 @@ export async function getUvMirrorEnv(): Promise<Record<string, string>> {
   return isOptimized ? { ...UV_MIRROR_ENV } : {};
 }
 
-export async function getUvRuntimeEnv(): Promise<Record<string, string>> {
+export async function getUvRuntimeEnv(options: { forceDataPython?: boolean } = {}): Promise<Record<string, string>> {
   const mirrorEnv = await getUvMirrorEnv();
   const runtimeDir = join(getConfiguredDataRoot(), 'uclaw', 'runtime', 'uv');
   const cacheDir = join(runtimeDir, 'cache');
   const dataDir = join(runtimeDir, 'data');
-  const pythonInstallDir = join(runtimeDir, 'python');
+  const dataPythonInstallDir = join(runtimeDir, 'python');
+  const bundledPythonInstallDir = getBundledPythonInstallDir();
+  const pythonInstallDir = !options.forceDataPython && hasBundledPythonInstall(bundledPythonInstallDir)
+    ? bundledPythonInstallDir
+    : dataPythonInstallDir;
   const binDir = join(runtimeDir, 'bin');
   const toolDir = join(runtimeDir, 'tools');
 
-  for (const dir of [cacheDir, dataDir, pythonInstallDir, binDir, toolDir]) {
+  for (const dir of [cacheDir, dataDir, dataPythonInstallDir, binDir, toolDir]) {
     mkdirSync(dir, { recursive: true });
   }
 

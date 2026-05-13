@@ -1,6 +1,6 @@
 {
   "name": "UClaw",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@discordjs/opus",
@@ -54,8 +54,9 @@
     "uv:download:win": "zx scripts/download-bundled-uv.mjs --platform=win",
     "uv:download:linux": "zx scripts/download-bundled-uv.mjs --platform=linux",
     "uv:download:all": "zx scripts/download-bundled-uv.mjs --all",
+    "python:download:win": "zx scripts/download-bundled-python.mjs --platform=win",
     "node:download:win": "zx scripts/download-bundled-node.mjs --platform=win",
-    "prep:win-binaries": "pnpm run uv:download:win && pnpm run node:download:win",
+    "prep:win-binaries": "pnpm run uv:download:win && pnpm run python:download:win && pnpm run node:download:win",
     "icons": "zx scripts/generate-icons.mjs",
     "package": "node scripts/generate-ext-bridge.mjs && vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && zx scripts/bundle-preinstalled-skills.mjs",
     "package:mac": "pnpm run package && electron-builder --mac --publish never",

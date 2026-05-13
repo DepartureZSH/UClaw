@@ -2,7 +2,7 @@ import { app } from 'electron';
 import { execSync, spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { getUvRuntimeEnv } from './uv-env';
+import { getBundledPythonInstallDir, getUvRuntimeEnv } from './uv-env';
 import { logger } from './logger';
 import { quoteForCmd, needsWinShell } from './paths';
 
@@ -193,6 +193,8 @@ export async function setupManagedPython(): Promise<void> {
   const { bin: uvBin, source } = resolveUvBin();
   const uvEnv = await getUvRuntimeEnv();
   const hasMirror = Boolean(uvEnv.UV_PYTHON_INSTALL_MIRROR || uvEnv.UV_INDEX_URL);
+  const bundledPythonDir = getBundledPythonInstallDir();
+  const usingBundledPython = uvEnv.UV_PYTHON_INSTALL_DIR === bundledPythonDir;
 
   logger.info(
     `Setting up managed Python 3.12 ` +
@@ -200,12 +202,30 @@ export async function setupManagedPython(): Promise<void> {
   );
 
   const baseEnv: Record<string, string | undefined> = { ...process.env };
+  const bundledPython = usingBundledPython
+    ? await findManagedPythonPath(uvBin, { ...baseEnv, ...uvEnv })
+    : '';
+  if (bundledPython) {
+    logger.info(`Using bundled managed Python 3.12 at: ${bundledPython}`);
+    return;
+  }
+
+  const installEnv = usingBundledPython
+    ? await getUvRuntimeEnv({ forceDataPython: true })
+    : uvEnv;
+  const installHasMirror = Boolean(installEnv.UV_PYTHON_INSTALL_MIRROR || installEnv.UV_INDEX_URL);
+  if (usingBundledPython) {
+    logger.warn(
+      `Bundled Python directory was present but uv could not resolve Python 3.12 from ${bundledPythonDir}; ` +
+      `falling back to data-root installDir=${installEnv.UV_PYTHON_INSTALL_DIR}`,
+    );
+  }
 
   // Attempt 1: with mirror (if applicable)
   try {
-    await runPythonInstall(uvBin, { ...baseEnv, ...uvEnv }, hasMirror ? 'mirror' : 'default');
+    await runPythonInstall(uvBin, { ...baseEnv, ...installEnv }, installHasMirror ? 'mirror' : 'default');
   } catch (firstError) {
-    const existingPython = await findManagedPythonPath(uvBin, { ...baseEnv, ...uvEnv });
+    const existingPython = await findManagedPythonPath(uvBin, { ...baseEnv, ...installEnv });
     if (existingPython) {
       logger.info(
         `Python install reported a recoverable post-install error, but managed Python is available at: ${existingPython}`,
@@ -215,7 +235,7 @@ export async function setupManagedPython(): Promise<void> {
 
     logger.warn('Python install attempt 1 failed:', firstError);
 
-    if (hasMirror) {
+    if (installHasMirror) {
       // Attempt 2: retry without mirror to rule out mirror issues
       logger.info('Retrying Python install without mirror...');
       try {
@@ -235,7 +255,7 @@ export async function setupManagedPython(): Promise<void> {
     const findPath = await new Promise<string>((resolve) => {
       const child = spawn(verifyShell ? quoteForCmd(uvBin) : uvBin, ['python', 'find', '3.12'], {
         shell: verifyShell,
-        env: { ...process.env, ...uvEnv },
+        env: { ...process.env, ...installEnv },
         windowsHide: true,
       });
       let output = '';

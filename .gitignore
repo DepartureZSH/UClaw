@@ -55,6 +55,8 @@ test-results/
 *.rpm
 
 resources/bin
+resources/python
+temp_python_download
 
 # Secrets
 *.p12
