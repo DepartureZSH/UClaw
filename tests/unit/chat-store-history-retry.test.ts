@@ -293,4 +293,43 @@ describe('useChatStore startup history retry', () => {
     expect(useChatStore.getState().messages.filter((message) => message.role === 'user')).toHaveLength(1);
     expect(useChatStore.getState().messages[0]?.id).toBe('gateway-user');
   });
+
+  it('filters heartbeat control prompts from loaded chat history', async () => {
+    const { useChatStore } = await import('@/stores/chat');
+    useChatStore.setState({
+      currentSessionKey: 'agent:main:main',
+      currentAgentId: 'main',
+      sessions: [{ key: 'agent:main:main' }],
+      messages: [],
+      sessionLabels: {},
+      sessionLastActivity: {},
+      sending: false,
+      activeRunId: null,
+      streamingText: '',
+      streamingMessage: null,
+      streamingTools: [],
+      pendingFinal: false,
+      lastUserMessageAt: null,
+      pendingToolImages: [],
+      error: null,
+      loading: false,
+      thinkingLevel: null,
+    });
+
+    gatewayRpcMock.mockResolvedValueOnce({
+      messages: [
+        {
+          role: 'user',
+          content: 'Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK. Current time: Thursday, May 14th, 2026 - 13:07 (Asia/Shanghai)',
+          timestamp: 1000,
+        },
+        { role: 'assistant', content: 'HEARTBEAT_OK', timestamp: 1001 },
+        { role: 'user', content: '正常用户消息', timestamp: 1002 },
+      ],
+    });
+
+    await useChatStore.getState().loadHistory(true);
+
+    expect(useChatStore.getState().messages.map((message) => message.content)).toEqual(['正常用户消息']);
+  });
 });

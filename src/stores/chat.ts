@@ -941,9 +941,20 @@ function isToolResultRole(role: unknown): boolean {
   return normalized === 'toolresult' || normalized === 'tool_result';
 }
 
+function isHeartbeatControlPrompt(text: string): boolean {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  return normalized.startsWith('Read HEARTBEAT.md if it exists')
+    && normalized.includes('Do not infer or repeat old tasks')
+    && normalized.includes('Current time:');
+}
+
 /** True for internal plumbing messages that should never be shown in the UI. */
 function isInternalMessage(msg: { role?: unknown; content?: unknown }): boolean {
   if (msg.role === 'system') return true;
+  if (msg.role === 'user') {
+    const text = getMessageText(msg.content);
+    if (isHeartbeatControlPrompt(text)) return true;
+  }
   if (msg.role === 'assistant') {
     const text = getMessageText(msg.content);
     if (/^(HEARTBEAT_OK|NO_REPLY)\s*$/.test(text)) return true;

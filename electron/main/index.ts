@@ -70,6 +70,12 @@ const isE2EMode = process.env.UCLAW_E2E === '1';
 let dataRootResolution: DataRootResolution;
 let earlyStartupError: unknown = null;
 
+function shouldUseInstalledWindowsAppUserModelId(): boolean {
+  if (process.platform !== 'win32') return false;
+  if (!app.isPackaged) return true;
+  return dataRootResolution?.source === 'default';
+}
+
 // Disable GPU hardware acceleration globally for maximum stability across
 // all GPU configurations (no GPU, integrated, discrete).
 //
@@ -173,12 +179,22 @@ function getAppIcon(): Electron.NativeImage | undefined {
   if (process.platform === 'darwin') return undefined; // macOS uses the app bundle icon
 
   const iconsDir = getIconsDir();
-  const iconPath =
+  const primaryIconPath =
     process.platform === 'win32'
       ? join(iconsDir, 'icon.ico')
       : join(iconsDir, 'icon.png');
-  const icon = nativeImage.createFromPath(iconPath);
-  return icon.isEmpty() ? undefined : icon;
+  const fallbackIconPath = join(iconsDir, 'icon.png');
+  const primaryIcon = nativeImage.createFromPath(primaryIconPath);
+  if (!primaryIcon.isEmpty()) return primaryIcon;
+
+  const fallbackIcon = nativeImage.createFromPath(fallbackIconPath);
+  if (!fallbackIcon.isEmpty()) {
+    logger.warn(`App icon ${primaryIconPath} could not be loaded; using ${fallbackIconPath}`);
+    return fallbackIcon;
+  }
+
+  logger.warn(`App icons could not be loaded from ${iconsDir}`);
+  return undefined;
 }
 
 /**
@@ -190,12 +206,13 @@ function createWindow(): BrowserWindow {
   const useCustomTitleBar = isWindows;
   const shouldSkipSetupForE2E = process.env.UCLAW_E2E_SKIP_SETUP === '1';
 
+  const appIcon = getAppIcon();
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 960,
     minHeight: 600,
-    icon: getAppIcon(),
+    icon: appIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
@@ -208,6 +225,9 @@ function createWindow(): BrowserWindow {
     frame: isMac || !useCustomTitleBar,
     show: false,
   });
+  if (appIcon && process.platform === 'win32') {
+    win.setIcon(appIcon);
+  }
 
   // Handle external links — only allow safe protocols to prevent arbitrary
   // command execution via shell.openExternal() (e.g. file://, ms-msdt:, etc.)
@@ -573,8 +593,12 @@ if (gotTheLock) {
     releaseProcessInstanceFileLock();
   });
 
-  if (process.platform === 'win32') {
+  if (shouldUseInstalledWindowsAppUserModelId()) {
     app.setAppUserModelId(WINDOWS_APP_USER_MODEL_ID);
+  } else if (process.platform === 'win32') {
+    logger.info(
+      `Skipping installed AppUserModelId for portable/data-root launch (source=${dataRootResolution?.source ?? 'unknown'})`,
+    );
   }
 
   gatewayManager = new GatewayManager();
