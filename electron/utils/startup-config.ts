@@ -59,11 +59,11 @@ export const DEFAULT_STARTUP_RUNTIME_CONFIG: StartupRuntimeConfig = {
     'setup-check': 5_000,
     'config-sync': 20_000,
     'provider-key-sync': 10_000,
-    'gateway-start': 45_000,
+    'gateway-start': 120_000,
   },
   gateway: {
     waitForPortFreeTimeoutMs: 30_000,
-    readyWaitTimeoutMs: 45_000,
+    readyWaitTimeoutMs: 120_000,
     readyWaitPollIntervalMs: 200,
     readyProbeTimeoutMs: 1_500,
     challengeTimeoutMs: 10_000,

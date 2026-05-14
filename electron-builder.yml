@@ -167,6 +167,10 @@ linux:
     - target: rpm
       arch:
         - x64
+    - target: zip
+      arch:
+        - x64
+        - arm64
   category: Utility
   maintainer: UClaw Team <public@valuecell.ai>
   vendor: UClaw

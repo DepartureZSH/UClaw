@@ -25,8 +25,8 @@ describe('startup config', () => {
     const config = resolveStartupRuntimeConfig();
 
     expect(config.stepTimeouts['app-init']).toBe(DEFAULT_STARTUP_RUNTIME_CONFIG.stepTimeouts['app-init']);
-    expect(config.stepTimeouts['gateway-start']).toBe(45_000);
-    expect(config.gateway.readyWaitTimeoutMs).toBe(45_000);
+    expect(config.stepTimeouts['gateway-start']).toBe(120_000);
+    expect(config.gateway.readyWaitTimeoutMs).toBe(120_000);
   });
 
   it('accepts persisted startup settings overrides', () => {

@@ -5,7 +5,6 @@ import {
 } from '../../utils/secure-storage';
 import {
   getProviderConfig,
-  getProviderDefaultModel,
 } from '../../utils/provider-registry';
 import { deviceOAuthManager, type OAuthProviderType } from '../../utils/device-oauth';
 import { browserOAuthManager, type BrowserOAuthProviderType } from '../../utils/browser-oauth';
@@ -27,7 +26,6 @@ import { logger } from '../../utils/logger';
 import { proxyAwareFetch } from '../../utils/proxy-fetch';
 import {
   getOpenClawRuntimeApiKey,
-  getOpenClawRuntimeModelIds,
   patchProviderModelCosts,
 } from '../../utils/openclaw-auth';
 import { parsePricingResponse } from '../../utils/new-api-pricing';
@@ -127,54 +125,36 @@ export async function handleProviderRoutes(
   }> {
     const apiRoot = baseUrl.replace(/\/v1$/, '');
     const authHeaders = { Authorization: `Bearer ${apiKey}` };
-    let models: string[] = [];
-    let pricing: Record<string, { input: number; output: number }> = {};
+    let pricingError: unknown;
 
     try {
       const pricingRes = await proxyAwareFetch(`${apiRoot}/api/pricing`, { headers: authHeaders });
-      if (pricingRes.ok) {
-        const pricingJson = await pricingRes.json();
-        const parsed = parsePricingResponse(pricingJson, pricingBase);
-        models = parsed.models;
-        pricing = parsed.pricing;
+      if (!pricingRes.ok) {
+        throw new Error(`New API pricing HTTP ${pricingRes.status}`);
       }
-    } catch { /* pricing endpoint not available */ }
+      const pricingJson = await pricingRes.json();
+      const parsed = parsePricingResponse(pricingJson, pricingBase);
+      if (parsed.models.length > 0) {
+        return parsed;
+      }
+      pricingError = new Error('New API /api/pricing did not return any chat models');
+    } catch (error) {
+      pricingError = error;
+    }
 
-    if (models.length === 0) {
+    try {
       const modelsRes = await proxyAwareFetch(`${baseUrl}/models`, { headers: authHeaders });
       if (!modelsRes.ok) throw new Error(`Upstream HTTP ${modelsRes.status}`);
       const json = await modelsRes.json() as { data?: { id: string }[] };
-      models = (json.data ?? []).map((m) => m.id).filter(Boolean);
+      const models = Array.from(new Set((json.data ?? []).map((m) => m.id?.trim()).filter(Boolean)));
+      if (models.length === 0) throw new Error('New API /models did not return any models');
+      return { models, pricing: {} };
+    } catch (modelsError) {
+      throw new Error(
+        `获取 New API 模型列表失败: ${pricingError instanceof Error ? pricingError.message : String(pricingError)}; ${modelsError instanceof Error ? modelsError.message : String(modelsError)}`,
+        { cause: modelsError },
+      );
     }
-
-    return { models, pricing };
-  }
-
-  function normalizeConfiguredModelId(model: string | undefined, providerKeys: string[]): string | undefined {
-    const trimmed = model?.trim();
-    if (!trimmed) {
-      return undefined;
-    }
-    for (const providerKey of providerKeys) {
-      const prefix = `${providerKey}/`;
-      if (trimmed.startsWith(prefix)) {
-        return trimmed.slice(prefix.length);
-      }
-    }
-    return trimmed;
-  }
-
-  function mergeModelIds(...groups: Array<Array<string | undefined>>): string[] {
-    const models: string[] = [];
-    for (const group of groups) {
-      for (const model of group) {
-        const trimmed = model?.trim();
-        if (trimmed && !models.includes(trimmed)) {
-          models.push(trimmed);
-        }
-      }
-    }
-    return models;
   }
 
   // POST /api/fetch-models — proxy for renderer: no CORS, accepts {baseUrl, apiKey} in body.
@@ -213,24 +193,7 @@ export async function handleProviderRoutes(
       }
       const baseUrl = (account.baseUrl || 'https://chatbot.cn.unreachablecity.club/v1').replace(/\/$/, '');
       const pricingBase = typeof account.metadata?.pricingBase === 'number' ? account.metadata.pricingBase : undefined;
-      const configuredModels = await getOpenClawRuntimeModelIds(providerCandidates);
-      const defaultModel = normalizeConfiguredModelId(getProviderDefaultModel(account.vendorId), providerCandidates);
-      const accountModels = mergeModelIds([
-        normalizeConfiguredModelId(account.model, providerCandidates),
-        defaultModel,
-        ...((account.fallbackModels ?? []).map((model) => normalizeConfiguredModelId(model, providerCandidates))),
-      ]);
-      let result: Awaited<ReturnType<typeof fetchModelsWithPricing>>;
-      try {
-        result = await fetchModelsWithPricing(baseUrl, apiKey, pricingBase);
-      } catch (error) {
-        const fallbackModels = mergeModelIds(configuredModels, accountModels);
-        if (fallbackModels.length === 0) {
-          throw error;
-        }
-        result = { models: fallbackModels, pricing: {} };
-      }
-      result.models = mergeModelIds(result.models, configuredModels, accountModels);
+      const result = await fetchModelsWithPricing(baseUrl, apiKey, pricingBase);
       sendJson(res, 200, { success: true, ...result });
     } catch (error) {
       sendJson(res, 500, { success: false, error: String(error) });

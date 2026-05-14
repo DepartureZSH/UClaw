@@ -2,7 +2,7 @@
  * Providers Settings Component
  * Manage AI provider configurations and API keys
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Plus,
   Trash2,
@@ -17,6 +17,8 @@ import {
   Copy,
   XCircle,
   ChevronDown,
+  Globe2,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +28,7 @@ import {
   useProviderStore,
   type ProviderAccount,
   type ProviderConfig,
+  type ProviderWithKeyInfo,
   type ProviderVendorInfo,
 } from '@/stores/providers';
 import {
@@ -57,6 +60,18 @@ const inputClasses = 'h-[44px] rounded-xl font-mono text-[13px] bg-[#eeece3] dar
 const labelClasses = 'text-[14px] text-foreground/80 font-bold';
 type ArkMode = 'apikey' | 'codeplan';
 
+interface KimiWebSearchStatus {
+  enabled: boolean;
+  hasApiKey: boolean;
+  ok: boolean;
+  providerCandidates: string[];
+  model?: string;
+  baseUrl?: string;
+  message: string;
+}
+
+const NEW_API_DEFAULT_BASE_URL = 'https://chatbot.cn.unreachablecity.club/v1';
+
 function normalizeFallbackProviderIds(ids?: string[]): string[] {
   return Array.from(new Set((ids ?? []).filter(Boolean)));
 }
@@ -76,8 +91,11 @@ function fallbackProviderIdsEqual(a?: string[], b?: string[]): boolean {
   return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
-function normalizeFallbackModels(models?: string[]): string[] {
-  return Array.from(new Set((models ?? []).map((model) => model.trim()).filter(Boolean)));
+function normalizeFallbackModels(models?: Array<string | null | undefined>): string[] {
+  const normalized = (models ?? [])
+    .map((model) => model?.trim())
+    .filter((model): model is string => Boolean(model));
+  return Array.from(new Set(normalized));
 }
 
 function fallbackModelsEqual(a?: string[], b?: string[]): boolean {
@@ -251,6 +269,8 @@ export function ProvidersSettings() {
         </Button>
       </div>
 
+      <WebSearchPanel accounts={accounts} statuses={statuses} />
+
       {loading ? (
         <div className="flex items-center justify-center py-12 text-muted-foreground bg-black/5 dark:bg-white/5 rounded-3xl border border-transparent border-dashed">
           <Loader2 className="h-6 w-6 animate-spin" />
@@ -321,6 +341,193 @@ export function ProvidersSettings() {
   );
 }
 
+function WebSearchPanel({
+  accounts,
+  statuses,
+}: {
+  accounts: ProviderAccount[];
+  statuses: ProviderWithKeyInfo[];
+}) {
+  const newApiAccount = accounts.find((account) => account.vendorId === 'new-api');
+  const newApiStatus = newApiAccount
+    ? statuses.find((status) => status.id === newApiAccount.id)
+    : undefined;
+  const [status, setStatus] = useState<KimiWebSearchStatus | null>(null);
+  const [model, setModel] = useState('');
+  const [kimiModels, setKimiModels] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refreshWebSearch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (!newApiAccount) {
+        setStatus(null);
+        setKimiModels([]);
+        setModel('');
+        setError('请先添加并配置 New API Provider。');
+        return;
+      }
+      const next = await invokeIpc<KimiWebSearchStatus>('openclaw:webSearchStatus');
+      const modelData = await hostApiFetch<{ success: boolean; models: string[]; error?: string }>(
+        `/api/provider-accounts/${encodeURIComponent(newApiAccount.id)}/models`,
+      );
+      if (!modelData.success) {
+        throw new Error(modelData.error ?? '获取 New API 模型列表失败');
+      }
+      const nextKimiModels = normalizeFallbackModels(
+        (modelData.models ?? []).filter((candidate) => /^kimi/i.test(candidate)),
+      );
+      setStatus(next);
+      setKimiModels(nextKimiModels);
+      setModel((current) => {
+        if (current && nextKimiModels.includes(current)) return current;
+        if (next.model && nextKimiModels.includes(next.model)) return next.model;
+        return nextKimiModels[0] ?? '';
+      });
+      if (nextKimiModels.length === 0) {
+        setError('New API 模型列表中没有 kimi 开头的联网搜索模型。');
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [newApiAccount]);
+
+  useEffect(() => {
+    void refreshWebSearch();
+  }, [refreshWebSearch]);
+
+  const saveWebSearch = async () => {
+    if (!newApiAccount || !model) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const normalizedBaseUrl = (newApiAccount.baseUrl || NEW_API_DEFAULT_BASE_URL).replace(/\/$/, '');
+      await invokeIpc('openclaw:updateWebSearchModel', model, normalizedBaseUrl);
+      toast.success('联网搜索配置已更新');
+      await refreshWebSearch();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const statusTone = !status
+    ? 'text-muted-foreground'
+    : status.enabled && status.ok
+      ? 'text-green-600 dark:text-green-400'
+      : status.enabled
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-muted-foreground';
+  const canResolveKey = Boolean(status?.hasApiKey || newApiStatus?.hasKey);
+  const displayMessage = error
+    ? error
+    : !newApiAccount
+      ? '请先添加 New API Provider 后再配置联网搜索。'
+    : !status
+      ? '正在获取 New API 模型列表并检测联网搜索配置...'
+    : status.enabled && status.ok
+      ? '检测通过：联网搜索已启用，并且可以复用 New API 密钥。'
+      : status.enabled && !canResolveKey
+        ? '联网搜索已启用，但还没有检测到可复用的 New API 密钥。'
+        : status.enabled
+          ? '联网搜索已启用，但配置需要重新检测。'
+          : '联网搜索未启用，可从真实 New API 模型列表中选择 kimi 模型后保存启用。';
+
+  return (
+    <div className="rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] border border-transparent p-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex gap-4 min-w-0">
+          <div className="h-[42px] w-[42px] shrink-0 flex items-center justify-center rounded-full bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10">
+            <Globe2 className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-[15px]">联网搜索 web-search</h3>
+              <span className={cn('text-[12px] font-medium', statusTone)}>
+                {status?.enabled ? (status.ok ? '已启用' : '需要检查') : '未启用'}
+              </span>
+            </div>
+            <p className="text-[13px] text-muted-foreground mt-1">
+              使用 Kimi/Moonshot 风格联网搜索，默认复用 New API 密钥，不需要单独填写 web-search API Key。
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
+              <span>模型：{status?.model || model || '-'}</span>
+              <span>可选模型：{kimiModels.length}</span>
+              <span>密钥：{canResolveKey ? '可用' : '未检测到'}</span>
+              {status?.providerCandidates?.length ? <span>来源：{status.providerCandidates.join(', ')}</span> : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={refreshWebSearch}
+            disabled={loading || saving}
+            className="h-9 w-9 rounded-full"
+            title="获取模型列表并检测"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void saveWebSearch()}
+            disabled={saving || loading || !newApiAccount || !model}
+            className="h-9 rounded-full px-4 text-[13px]"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            保存并启用
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+        <div className="space-y-1.5">
+          <Label className="text-[13px] text-muted-foreground">联网搜索模型</Label>
+          <div className="relative">
+            <select
+              value={model}
+              onChange={(event) => setModel(event.target.value)}
+              disabled={loading || kimiModels.length === 0}
+              className={cn(inputClasses, 'w-full appearance-none cursor-pointer px-3 pr-9 h-[40px]')}
+            >
+              {kimiModels.length === 0 && <option value="">未获取到 kimi 模型</option>}
+              {kimiModels.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={refreshWebSearch}
+          disabled={loading || saving || !newApiAccount}
+          className="h-10 rounded-full px-4 text-[13px]"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+          获取模型列表
+        </Button>
+      </div>
+
+      {displayMessage && (
+        <p className={cn('mt-3 text-[12px]', error ? 'text-red-500' : 'text-muted-foreground')}>
+          {displayMessage}
+        </p>
+      )}
+    </div>
+  );
+}
+
 interface ProviderCardProps {
   item: ProviderListItem;
   allProviders: ProviderListItem[];
@@ -375,7 +582,6 @@ function ProviderCard({
   const [fetchedPricing, setFetchedPricing] = useState<Record<string, { input: number; output: number }>>({});
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelError, setFetchModelError] = useState<string | null>(null);
-  const [webSearchModel, setWebSearchModel] = useState('');
 
   const typeInfo = PROVIDER_TYPE_INFO.find((t) => t.id === account.vendorId);
   const providerDocsUrl = getProviderDocsUrl(typeInfo, i18n.language);
@@ -432,10 +638,10 @@ function ProviderCard({
         models: string[];
         pricing?: Record<string, { input: number; output: number }>;
       };
-      const ids = data.models ?? [];
+      const ids = normalizeFallbackModels(data.models ?? []);
       if (ids.length === 0) throw new Error('未返回任何模型');
       setFetchedModels(ids);
-      if (!ids.includes(modelId)) setModelId(ids[0]);
+      if (!ids.includes(modelId)) setModelId(ids[0] ?? '');
       if (data.pricing && Object.keys(data.pricing).length > 0) {
         setFetchedPricing(data.pricing);
         invokeIpc('openclaw:syncModelPricing', 'new-api', data.pricing).catch(() => {});
@@ -712,30 +918,6 @@ function ProviderCard({
                   )}
                 </div>
               )}
-              {account.vendorId === 'new-api' && fetchedModels.some((m) => m.startsWith('kimi-')) && (
-                <div className="space-y-1.5">
-                  <Label className={currentLabelClasses}>网页搜索模型 (Kimi)</Label>
-                  <div className="relative">
-                    <select
-                      value={webSearchModel}
-                      onChange={(e) => {
-                        const m = e.target.value;
-                        setWebSearchModel(m);
-                        const baseUrl = (account.baseUrl || '').replace(/\/$/, '');
-                        invokeIpc('openclaw:updateWebSearchModel', m || null, baseUrl).catch(() => {});
-                      }}
-                      className={cn(currentInputClasses, 'w-full appearance-none cursor-pointer px-3 pr-9')}
-                    >
-                      <option value="">不启用网页搜索</option>
-                      {fetchedModels.filter((m) => m.startsWith('kimi-')).map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">通过 Kimi 模型的联网能力进行网页搜索</p>
-                </div>
-              )}
               {account.vendorId === 'ark' && codePlanPreset && (
                 <div className="space-y-1.5 pt-2">
                   <div className="flex items-center justify-between gap-2">
@@ -842,7 +1024,11 @@ function ProviderCard({
                     const checked = new Set(fallbackModelsText.split('\n').map((s) => s.trim()).filter(Boolean));
                     const toggle = (id: string) => {
                       const next = new Set(checked);
-                      next.has(id) ? next.delete(id) : next.add(id);
+                      if (next.has(id)) {
+                        next.delete(id);
+                      } else {
+                        next.add(id);
+                      }
                       setFallbackModelsText([...next].join('\n'));
                     };
                     return (
@@ -1092,7 +1278,6 @@ function AddProviderDialog({
   const [fetchedPricingAdd, setFetchedPricingAdd] = useState<Record<string, { input: number; output: number }>>({});
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelError, setFetchModelError] = useState<string | null>(null);
-  const [webSearchModel, setWebSearchModel] = useState('');
 
   // OAuth Flow State
   const [oauthFlowing, setOauthFlowing] = useState(false);
@@ -1310,13 +1495,10 @@ function AddProviderDialog({
         { method: 'POST', body: JSON.stringify({ baseUrl: url, apiKey: key }) },
       );
       if (!data.success) throw new Error(data.error ?? '获取失败');
-      const ids = data.models ?? [];
+      const ids = normalizeFallbackModels(data.models ?? []);
       if (ids.length === 0) throw new Error('未返回任何模型');
       setFetchedModels(ids);
-      if (!ids.includes(modelId)) setModelId(ids[0]);
-      const kimiModels = ids.filter((m) => m.startsWith('kimi-'));
-      const defaultKimi = kimiModels.includes('kimi-k2.5') ? 'kimi-k2.5' : (kimiModels[0] ?? '');
-      setWebSearchModel(defaultKimi);
+      if (!ids.includes(modelId)) setModelId(ids[0] ?? '');
       const pricing = data.pricing ?? {};
       if (Object.keys(pricing).length > 0) {
         setFetchedPricingAdd(pricing);
@@ -1401,10 +1583,6 @@ function AddProviderDialog({
               : vendorMap.get(selectedType)?.defaultAuthMode || 'api_key',
         }
       );
-      if (selectedType === 'new-api' && webSearchModel) {
-        const resolvedBase = (baseUrl.trim() || 'https://chatbot.cn.unreachablecity.club/v1').replace(/\/$/, '');
-        invokeIpc('openclaw:updateWebSearchModel', webSearchModel, resolvedBase).catch(() => {});
-      }
     } catch {
       // error already handled via toast in parent
     } finally {
@@ -1648,25 +1826,6 @@ function AddProviderDialog({
                     )}
                     {fetchModelError && (
                       <p className="text-[12px] text-red-500">{fetchModelError}</p>
-                    )}
-                    {fetchedModels.some((m) => m.startsWith('kimi-')) && (
-                      <div className="space-y-1.5 pt-1">
-                        <Label className={labelClasses}>网页搜索模型 (Kimi)</Label>
-                        <div className="relative">
-                          <select
-                            value={webSearchModel}
-                            onChange={(e) => setWebSearchModel(e.target.value)}
-                            className={cn(inputClasses, 'w-full appearance-none cursor-pointer pr-9')}
-                          >
-                            <option value="">不启用网页搜索</option>
-                            {fetchedModels.filter((m) => m.startsWith('kimi-')).map((m) => (
-                              <option key={m} value={m}>{m}</option>
-                            ))}
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <p className="text-[11px] text-muted-foreground">通过 Kimi 模型的联网能力进行网页搜索</p>
-                      </div>
                     )}
                   </div>
                 )}

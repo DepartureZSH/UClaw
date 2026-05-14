@@ -323,6 +323,8 @@ export interface KimiWebSearchStatus {
   hasApiKey: boolean;
   ok: boolean;
   providerCandidates: string[];
+  model?: string;
+  baseUrl?: string;
   message: string;
 }
 
@@ -339,12 +341,17 @@ function hasExplicitKimiWebSearchApiKey(config: Record<string, unknown> | null |
 
 export async function getKimiWebSearchStatus(): Promise<KimiWebSearchStatus> {
   const config = await readGatewayOpenClawConfig();
+  const webSearch = getKimiWebSearchConfig(config);
+  const model = typeof webSearch?.model === 'string' ? webSearch.model.trim() : undefined;
+  const baseUrl = normalizeProviderBaseUrl(webSearch?.baseUrl);
   if (!isKimiWebSearchEnabled(config)) {
     return {
       enabled: false,
       hasApiKey: false,
       ok: true,
       providerCandidates: [],
+      model,
+      baseUrl,
       message: 'Kimi web search is not enabled',
     };
   }
@@ -356,6 +363,8 @@ export async function getKimiWebSearchStatus(): Promise<KimiWebSearchStatus> {
       hasApiKey: true,
       ok: true,
       providerCandidates,
+      model,
+      baseUrl,
       message: 'Kimi web search has an explicit API key',
     };
   }
@@ -367,6 +376,8 @@ export async function getKimiWebSearchStatus(): Promise<KimiWebSearchStatus> {
     hasApiKey,
     ok: hasApiKey,
     providerCandidates,
+    model,
+    baseUrl,
     message: hasApiKey
       ? 'Kimi web search can resolve an API key'
       : 'Kimi web search is enabled but no compatible API key was found',
