@@ -1,6 +1,6 @@
 {
   "name": "UClaw",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@discordjs/opus",
@@ -33,11 +33,11 @@
   "private": true,
   "scripts": {
     "init": "pnpm install && pnpm run uv:download",
-    "predev": "node scripts/generate-ext-bridge.mjs && zx scripts/prepare-preinstalled-skills-dev.mjs",
+    "predev": "node scripts/patch-openclaw-runtime.mjs node_modules/openclaw && node scripts/generate-ext-bridge.mjs && zx scripts/prepare-preinstalled-skills-dev.mjs",
     "dev": "vite",
     "dev:portable": "node scripts/dev-portable.mjs",
     "ext:bridge": "node scripts/generate-ext-bridge.mjs",
-    "build": "node scripts/generate-ext-bridge.mjs && vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && zx scripts/bundle-preinstalled-skills.mjs && electron-builder",
+    "build": "node scripts/generate-ext-bridge.mjs && vite build && zx scripts/bundle-openclaw.mjs && node scripts/patch-openclaw-runtime.mjs build/openclaw && zx scripts/bundle-openclaw-plugins.mjs && zx scripts/bundle-preinstalled-skills.mjs && electron-builder",
     "build:vite": "vite build",
     "bundle:openclaw-plugins": "zx scripts/bundle-openclaw-plugins.mjs",
     "bundle:preinstalled-skills": "zx scripts/bundle-preinstalled-skills.mjs",
@@ -58,7 +58,7 @@
     "node:download:win": "zx scripts/download-bundled-node.mjs --platform=win",
     "prep:win-binaries": "pnpm run uv:download:win && pnpm run python:download:win && pnpm run node:download:win",
     "icons": "zx scripts/generate-icons.mjs",
-    "package": "node scripts/generate-ext-bridge.mjs && vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && zx scripts/bundle-preinstalled-skills.mjs",
+    "package": "node scripts/generate-ext-bridge.mjs && vite build && zx scripts/bundle-openclaw.mjs && node scripts/patch-openclaw-runtime.mjs build/openclaw && zx scripts/bundle-openclaw-plugins.mjs && zx scripts/bundle-preinstalled-skills.mjs",
     "package:mac": "pnpm run package && electron-builder --mac --publish never",
     "package:mac:local": "SKIP_PREINSTALLED_SKILLS=1 pnpm run package && electron-builder --mac --publish never",
     "package:win": "pnpm run prep:win-binaries && pnpm run package && electron-builder --win --publish never",
