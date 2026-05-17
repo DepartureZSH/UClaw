@@ -67,6 +67,8 @@ UClaw comes pre-configured with best-practice model providers and natively suppo
   <img src="resources/screenshot/zh/settings.png" alt="UClaw settings page" style="width: 100%; height: auto;">
 </p>
 
+See [user-guide.md](user-guide.md) for the end-user guide and [docs/user-manual.html](docs/user-manual.html) for the offline HTML manual. The guide includes page-level fields, screenshots, channel setup details, and common troubleshooting steps.
+
 ---
 
 ## Why UClaw
@@ -176,8 +178,7 @@ When you launch UClaw for the first time, the **Setup Wizard** will guide you th
 The wizard preselects your system language when it is supported, and falls back to English otherwise.
 If the selected workspace already contains `.openclaw/openclaw.json`, the wizard reuses that OpenClaw configuration and skips the AI key entry step.
 
-> Note for Moonshot (Kimi): UClaw keeps Kimi web search enabled by default.  
-> When Moonshot is configured, UClaw also syncs Kimi web search to the China endpoint (`https://api.moonshot.cn/v1`) in OpenClaw config.
+> Web search note: UClaw uses Kimi/Moonshot-style web search through the New API service by default. End users should use the in-app one-click configuration or switching flow; they do not need to deploy their own endpoint or edit OpenClaw configuration files manually.
 
 ### Proxy Settings
 
@@ -207,6 +208,32 @@ Notes:
 - To explicitly clear Telegram channel proxy from OpenClaw config, save proxy settings with proxy disabled.
 - In **Settings → Advanced → Developer**, you can run **OpenClaw Doctor** to execute `openclaw doctor --json` and inspect the diagnostic output without leaving the app.
 - On packaged Windows builds, the bundled `openclaw` CLI/TUI runs via the shipped `node.exe` entrypoint to keep terminal input behavior stable.
+
+### Page Field Quick Reference
+
+| Page | Main fields and buttons | Common user actions |
+|------|-------------------------|---------------------|
+| Chat | New chat, session list, current target, refresh, composer, attachment, send/stop, Gateway status | Ask questions, request web search with sources, confirm the current Agent is connected |
+| Models | AI model providers, model ID, fetch model list, API key status, web-search section | Check New API configuration, refresh available models, verify the search model |
+| Settings | Theme, language, launch at startup, Gateway status, port, logs, proxy, updates, about | Adjust appearance/language, check updates, open logs, configure proxy |
+| Channels | Add channel, account ID, default account, Agent binding, diagnostics, restart Gateway | Connect WeChat/Feishu/DingTalk and bind messages to the right Agent |
+| Cron | Task name, trigger time, prompt, execution Agent, sender account, recipient target, enabled state | Create daily reports, periodic summaries, scheduled searches, or external delivery |
+| Skills | Skill name, enabled state, source path, configuration/API key | Check bundled skills, open skill folders, or fill skill settings |
+
+### Channel Configuration Fields
+
+UClaw supports multiple accounts per channel. Manual account IDs must use lowercase letters, digits, underscores, or hyphens, must be 64 characters or shorter, and must start with a letter or digit. QR-based channels such as WeChat and WhatsApp are managed by the plugin flow and do not require manual credentials.
+
+| Channel | Connection | Required fields |
+|---------|------------|-----------------|
+| WeChat | QR code | No manual fields; follow the QR confirmation flow |
+| WhatsApp | QR code | No manual fields; scan with WhatsApp on your phone |
+| Telegram | Bot token | Bot token, allowed user IDs |
+| Discord | Bot token | Bot token, guild ID, channel ID (optional) |
+| Feishu / Lark | App credentials | App ID, app secret |
+| DingTalk | App credentials | Client ID / AppKey, Client Secret / AppSecret |
+| WeCom | App credentials | Bot ID, app secret |
+| QQ Bot | App credentials | App ID, client secret |
 
 ---
 
@@ -436,7 +463,7 @@ We welcome contributions from the community! Whether it's bug fixes, new feature
 
 UClaw is built on the shoulders of excellent open-source projects:
 
-- [ClawX](https://github.com/ValueCell-ai/ClawX) – The original open-source desktop app lineage
+- [ClawX](https://github.com/ValueCell-ai/ClawX) – The original open-source desktop app lineage started by ValueCell-ai
 - [OpenClaw](https://github.com/OpenClaw) – The AI agent runtime
 - [Electron](https://www.electronjs.org/) – Cross-platform desktop framework
 - [React](https://react.dev/) – UI component library

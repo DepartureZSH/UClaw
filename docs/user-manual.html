@@ -480,6 +480,9 @@
           <a href="#prepare">准备</a>
           <a href="#setup">首次设置</a>
           <a href="#daily">日常使用</a>
+          <a href="#search-models">模型和搜索</a>
+          <a href="#page-fields">页面字段</a>
+          <a href="#channels-detail">频道配置</a>
           <a href="#portable">移动盘</a>
           <a href="#screens">页面导览</a>
           <a href="#faq">常见问题</a>
@@ -497,9 +500,9 @@
             这份页面说明怎么安装、怎么完成首次设置、怎么配置 AI、怎么开始对话、怎么使用联网搜索，以及遇到问题时先看哪里。不讲源码、不讲开发命令。
           </p>
           <div class="meta">
-            <span class="pill">适用版本：UClaw v0.2.0 及相近版本</span>
+            <span class="pill">适用版本：UClaw v0.2.11 及相近版本</span>
             <span class="pill">适用系统：Windows、macOS、Linux</span>
-            <span class="pill">文档日期：2026-05-04</span>
+            <span class="pill">文档日期：2026-05-17</span>
           </div>
           <div class="hero-actions">
             <a class="button primary" href="#setup">从首次设置开始</a>
@@ -697,19 +700,159 @@
           <article class="card">
             <h3>模型页面能看什么</h3>
             <p>模型页面可以查看模型使用量、Token 分布和近期趋势，也可以作为检查 AI API 配置是否正常的入口。</p>
+            <p><strong>AI 模型提供商</strong> 区域用于查看 New API 是否已配置、当前模型 ID、API 密钥状态和“获取模型列表”。</p>
+            <p><strong>联网搜索 web-search</strong> 区域位于 AI 模型提供商下方，用于查看搜索模型、检测搜索配置，并从 New API 可用模型中选择 Kimi/Moonshot 搜索模型。</p>
           </article>
         </div>
 
         <figure class="screenshot">
           <img src="../resources/screenshot/zh/models.png" alt="模型页面截图" />
-          <figcaption>模型页：查看近期模型用量、Token 统计和 AI API 配置相关入口。</figcaption>
+          <figcaption>模型页：查看近期模型用量、Token 统计、AI API 配置和联网搜索 web-search 配置入口。</figcaption>
+        </figure>
+      </section>
+
+      <section id="page-fields">
+        <div class="section-head">
+          <div>
+            <h2>6. 主要页面字段速查</h2>
+            <p>下面按页面列出普通用户会看到的主要字段和按钮。遇到问题时，可以先对照字段名称确认自己所在的位置。</p>
+          </div>
+          <div class="note">
+            <div class="note-body">
+              <h3>先看页面，再看日志</h3>
+              <p>大多数配置问题都可以先在模型、设置或频道页面确认；只有启动失败、网关超时、模型服务不可达时才需要打开日志。</p>
+            </div>
+          </div>
+        </div>
+
+        <table class="quick-table">
+          <thead>
+            <tr>
+              <th>页面</th>
+              <th>主要字段和按钮</th>
+              <th>怎么用</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>对话</td>
+              <td>新对话、会话列表、当前对话对象、刷新、输入框、附件、发送/停止、Gateway 状态、OpenClaw 页面</td>
+              <td>输入问题后发送；需要最新信息时明确要求“联网搜索并附来源”；如果发送按钮变成停止，说明 AI 正在回复。</td>
+            </tr>
+            <tr>
+              <td>模型</td>
+              <td>AI 模型提供商、模型 ID、获取模型列表、API 密钥状态、替换 API Key、联网搜索 web-search、搜索模型检测</td>
+              <td>确认 New API 已配置；点击获取模型列表检查可用模型；web-search 区域用于确认 Kimi/Moonshot 搜索模型是否可用。</td>
+            </tr>
+            <tr>
+              <td>设置</td>
+              <td>主题、语言、开机自启、网关状态、端口、日志、代理服务器、绕过规则、更新、关于</td>
+              <td>修改外观语言、检查更新、打开日志文件夹；公司网或校园网访问异常时，在代理区域填写本地代理。</td>
+            </tr>
+            <tr>
+              <td>频道</td>
+              <td>添加频道、账号 ID、默认账号、绑定 Agent、连接状态、诊断、复制诊断、重启网关</td>
+              <td>连接微信、飞书、钉钉等外部消息入口；一个频道可有多个账号，并可绑定到不同 Agent。</td>
+            </tr>
+            <tr>
+              <td>定时任务</td>
+              <td>任务名称、触发时间、提示词、执行 Agent、发送账号、接收目标、启用状态</td>
+              <td>创建日报、周期提醒、定期搜索或外部消息投递；发送账号和接收目标来自已配置频道。</td>
+            </tr>
+            <tr>
+              <td>技能</td>
+              <td>技能名称、启用状态、来源位置、配置/API Key、打开目录</td>
+              <td>查看内置技能是否启用；如某个技能提示缺少配置，可在技能详情中补充或打开真实目录检查。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="channels-detail">
+        <div class="section-head">
+          <div>
+            <h2>7. 频道配置细节</h2>
+            <p>频道用于把外部消息平台接入 UClaw。普通用户最常用的是扫码连接类频道；企业或团队场景可能需要填写平台后台提供的应用凭证。</p>
+          </div>
+          <div class="note warning">
+            <div class="note-body">
+              <h3>账号 ID 规则</h3>
+              <p>手动填写账号 ID 时，只能使用小写字母、数字、下划线和短横线，最长 64 位，并且必须以字母或数字开头。扫码频道通常由插件自动管理账号。</p>
+            </div>
+          </div>
+        </div>
+
+        <table class="quick-table">
+          <thead>
+            <tr>
+              <th>频道</th>
+              <th>连接方式</th>
+              <th>需要填写的字段</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>微信 WeChat</td>
+              <td>扫码</td>
+              <td>不需要手写字段</td>
+              <td>点击生成二维码，用手机微信扫码并确认。连接成功后可在频道页绑定 Agent。</td>
+            </tr>
+            <tr>
+              <td>WhatsApp</td>
+              <td>扫码</td>
+              <td>不需要手写字段</td>
+              <td>在手机 WhatsApp 的已关联设备中扫码。适合个人账号连接。</td>
+            </tr>
+            <tr>
+              <td>Telegram</td>
+              <td>Bot Token</td>
+              <td>机器人令牌、允许的用户 ID</td>
+              <td>机器人令牌来自 @BotFather；允许的用户 ID 用于限制谁可以使用机器人。</td>
+            </tr>
+            <tr>
+              <td>Discord</td>
+              <td>Bot Token</td>
+              <td>机器人令牌、服务器 ID、频道 ID（可选）</td>
+              <td>频道 ID 为空时可按服务器范围工作；填写频道 ID 可限制到指定频道。</td>
+            </tr>
+            <tr>
+              <td>飞书 Feishu / Lark</td>
+              <td>应用凭证</td>
+              <td>应用 ID、应用密钥</td>
+              <td>从飞书开放平台的企业自建应用中获取，保存后按提示完成机器人配置。</td>
+            </tr>
+            <tr>
+              <td>钉钉 DingTalk</td>
+              <td>应用凭证</td>
+              <td>Client ID / AppKey、Client Secret / AppSecret</td>
+              <td>适用于钉钉 Stream 模式。保存后通常需要重启网关以加载插件。</td>
+            </tr>
+            <tr>
+              <td>企业微信 WeCom</td>
+              <td>应用凭证</td>
+              <td>机器人 Bot ID、应用 Secret</td>
+              <td>从企业微信管理后台或机器人配置中获取，用于企业内部消息场景。</td>
+            </tr>
+            <tr>
+              <td>QQ Bot</td>
+              <td>应用凭证</td>
+              <td>App ID、Client Secret</td>
+              <td>从 QQ 机器人开放平台获取。保存后在频道页检查连接状态。</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <figure class="screenshot">
+          <img src="../resources/screenshot/zh/channels.png" alt="频道页面截图" />
+          <figcaption>频道页：查看频道连接状态、账号、Agent 绑定和网关诊断。</figcaption>
         </figure>
       </section>
 
       <section id="portable">
         <div class="section-head">
           <div>
-            <h2>6. 移动盘和跨系统使用</h2>
+            <h2>8. 移动盘和跨系统使用</h2>
             <p>UClaw 可以配合 U 盘或移动硬盘使用。核心原则是：使用包内启动器打开应用，让数据目录和工作区都跟着移动盘走。不同系统的启动方式略有区别。</p>
           </div>
           <div class="note warning">
@@ -777,7 +920,7 @@
       <section id="screens">
         <div class="section-head">
           <div>
-            <h2>7. 页面导览</h2>
+            <h2>9. 页面导览</h2>
             <p>下面几张截图展示 UClaw 的主要页面。普通用户日常最常用的是对话、模型、设置；需要自动化或外部消息时再使用定时任务和频道。</p>
           </div>
           <div class="note">
@@ -811,7 +954,7 @@
       <section id="faq">
         <div class="section-head">
           <div>
-            <h2>8. 常见问题</h2>
+            <h2>10. 常见问题</h2>
             <p>遇到问题时，先看是不是工作区、AI 服务配置、联网搜索开关或本地网关启动问题。下面是最常见的几类。</p>
           </div>
           <div class="note">
@@ -853,7 +996,7 @@
       <section id="safety">
         <div class="section-head">
           <div>
-            <h2>9. 安全和隐私建议</h2>
+            <h2>11. 安全和隐私建议</h2>
             <p>工作区、服务配置和聊天记录都可能包含敏感信息。跨电脑和移动硬盘使用时，尤其要注意设备和文件安全。</p>
           </div>
           <div class="note danger">
@@ -883,7 +1026,7 @@
       <section id="checklist">
         <div class="section-head">
           <div>
-            <h2>10. 快速排查清单</h2>
+            <h2>12. 快速排查清单</h2>
             <p>如果你只想快速定位问题，可以先按这张表操作。</p>
           </div>
           <div class="note success">
