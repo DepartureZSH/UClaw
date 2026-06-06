@@ -52,6 +52,7 @@ import { deviceOAuthManager, OAuthProviderType } from '../utils/device-oauth';
 import { browserOAuthManager, type BrowserOAuthProviderType } from '../utils/browser-oauth';
 import { applyProxySettings } from './proxy';
 import { syncLaunchAtStartupSettingFromStore } from './launch-at-startup';
+import { resolvePortableWorkspaceDir } from './workspace-startup';
 import { proxyAwareFetch } from '../utils/proxy-fetch';
 import { getRecentTokenUsageHistory } from '../utils/token-usage';
 import { getProviderService } from '../services/providers/provider-service';
@@ -2256,9 +2257,12 @@ function registerAppHandlers(): void {
   });
 
   ipcMain.handle('app:applyWorkspaceDir', async (_, dir: string) => {
-    await setSetting('workspaceDir', dir);
-    if (dir) {
-      process.env.UCLAW_WORKSPACE_DIR = dir;
+    const portableWorkspace = resolvePortableWorkspaceDir();
+    const storedDir = portableWorkspace?.stored ?? dir;
+    const resolvedDir = portableWorkspace?.resolved ?? dir;
+    await setSetting('workspaceDir', storedDir);
+    if (resolvedDir) {
+      process.env.UCLAW_WORKSPACE_DIR = resolvedDir;
     } else {
       delete process.env.UCLAW_WORKSPACE_DIR;
     }

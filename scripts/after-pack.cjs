@@ -762,8 +762,15 @@ exports.default = async function afterPack(context) {
     const portableMarkerPath = join(appOutDir, 'uclaw-portable.json');
     writeFileSync(portableMarkerPath, `${JSON.stringify({
       schema: 'uclaw-portable-data-root',
-      version: 1,
+      version: 2,
       dataRoot: 'data',
+      workspaceMode: 'portable-workbench',
+      workspaceDir: 'workspace',
+      provisioning: {
+        endpoint: process.env.UCLAW_PORTABLE_PROVISIONING_ENDPOINT || 'https://tbop954d65.sealosbja.site/uclaw/provision',
+        packageId: process.env.UCLAW_PORTABLE_PACKAGE_ID || 'uclaw-usb-default',
+        publicKeyId: process.env.UCLAW_PORTABLE_PUBLIC_KEY_ID || 'sealaf-bja-uclaw-v1',
+      },
     }, null, 2)}\n`, 'utf8');
     console.log(`[after-pack] ✅ Wrote Windows zip portable data-root marker: ${portableMarkerPath}`);
 

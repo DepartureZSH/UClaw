@@ -4,6 +4,7 @@ export type StartupStepId =
   | 'workspace-resolve'
   | 'setup-check'
   | 'config-sync'
+  | 'remote-config-sync'
   | 'provider-key-sync'
   | 'gateway-start';
 
@@ -102,6 +103,7 @@ export const STARTUP_STEP_ORDER: StartupStepId[] = [
   'workspace-resolve',
   'setup-check',
   'config-sync',
+  'remote-config-sync',
   'provider-key-sync',
   'gateway-start',
 ];
@@ -112,6 +114,7 @@ export const STARTUP_STEP_LABELS: Record<StartupStepId, string> = {
   'workspace-resolve': '解析工作区',
   'setup-check': '检查 Setup 状态',
   'config-sync': '同步配置',
+  'remote-config-sync': '同步远程配置',
   'provider-key-sync': '检查 Provider 密钥',
   'gateway-start': '启动 OpenClaw Gateway',
 };

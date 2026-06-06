@@ -12,9 +12,10 @@ const getOpenClawRuntimeApiKeyMock = vi.fn();
 const getOpenClawRuntimeCredentialProvidersMock = vi.fn();
 const listProviderAccountsMock = vi.fn();
 const getProviderSecretMock = vi.fn();
+const syncRemoteConfigMock = vi.fn();
 
 vi.mock('electron', () => ({
-  app: { quit: vi.fn() },
+  app: { getVersion: () => '0.2.0', quit: vi.fn() },
   dialog: { showOpenDialog: vi.fn() },
   ipcMain: { handle: vi.fn() },
   shell: { openPath: vi.fn() },
@@ -55,6 +56,10 @@ vi.mock('@electron/utils/openclaw-auth', () => ({
   getOpenClawRuntimeCredentialProviders: (...args: unknown[]) => getOpenClawRuntimeCredentialProvidersMock(...args),
 }));
 
+vi.mock('@electron/main/remote-config-sync', () => ({
+  syncRemoteConfig: (...args: unknown[]) => syncRemoteConfigMock(...args),
+}));
+
 vi.mock('@electron/utils/provider-keys', () => ({
   getOpenClawProviderKeyForType: (vendorId: string, accountId: string) => vendorId === 'custom' ? accountId : vendorId,
 }));
@@ -64,7 +69,9 @@ vi.mock('@electron/utils/paths', () => ({
 }));
 
 vi.mock('@electron/utils/data-root', () => ({
+  DATA_ROOT_SOURCE_ENV: 'UCLAW_DATA_ROOT_SOURCE',
   getConfiguredDataRoot: () => '/tmp/uclaw-data',
+  getConfiguredPortableDataRootConfig: () => null,
 }));
 
 vi.mock('@electron/utils/logger', () => ({
@@ -101,6 +108,7 @@ describe('StartupProgressService', () => {
     getOpenClawRuntimeCredentialProvidersMock.mockResolvedValue(new Set());
     listProviderAccountsMock.mockResolvedValue([]);
     getProviderSecretMock.mockResolvedValue(null);
+    syncRemoteConfigMock.mockResolvedValue({ status: 'skipped', message: '未配置远程配置下发，跳过' });
   });
 
   it('advances through startup steps and skips provider/gateway when auto-start is disabled', async () => {
@@ -123,6 +131,7 @@ describe('StartupProgressService', () => {
       ['workspace-resolve', 'success'],
       ['setup-check', 'success'],
       ['config-sync', 'success'],
+      ['remote-config-sync', 'skipped'],
       ['provider-key-sync', 'skipped'],
       ['gateway-start', 'skipped'],
     ]);
@@ -152,7 +161,31 @@ describe('StartupProgressService', () => {
     expect(snapshot.issue).toMatchObject({ type: 'normal-blocking', severity: 'S3', code: 'SETUP_REQUIRED' });
     expect(snapshot.steps.find((step) => step.id === 'setup-check')?.status).toBe('skipped');
     expect(snapshot.steps.find((step) => step.id === 'gateway-start')?.status).toBe('skipped');
+    expect(snapshot.steps.find((step) => step.id === 'remote-config-sync')?.status).toBe('skipped');
     expect(gatewayManager.start).not.toHaveBeenCalled();
+  });
+
+  it('runs remote config sync before provider key sync', async () => {
+    getSettingMock.mockImplementation(async (key: string) => {
+      if (key === 'setupComplete') return true;
+      if (key === 'gatewayAutoStart') return false;
+      return '';
+    });
+    syncRemoteConfigMock.mockResolvedValue({ status: 'success', message: '远程配置已同步：v1' });
+    const { StartupProgressService } = await import('@electron/main/startup-progress-service');
+    const gatewayManager = new FakeGatewayManager();
+    const service = new StartupProgressService({
+      gatewayManager: gatewayManager as never,
+      getMainWindow: () => null,
+    });
+
+    const snapshot = await service.runInitialStartup({
+      isE2EMode: false,
+      storageDiagnostics: { isAppTranslocated: false },
+    });
+
+    expect(snapshot.steps.find((step) => step.id === 'remote-config-sync')?.status).toBe('success');
+    expect(syncRemoteConfigMock).toHaveBeenCalled();
   });
 
   it('surfaces early data-root startup failures before other steps run', async () => {
@@ -250,6 +283,12 @@ describe('classifyStartupError', () => {
       .toMatchObject({ type: 'external', severity: 'S2', code: 'GATEWAY_PORT_WAIT_TIMEOUT' });
     expect(classifyStartupError(new Error('Gateway start failed')).issue)
       .toMatchObject({ type: 'internal', severity: 'S1', code: 'GATEWAY_PROCESS_START_FAILED' });
+    expect(classifyStartupError(new Error('remote config unavailable: HTTP 500')).issue)
+      .toMatchObject({ type: 'external', severity: 'S1', code: 'REMOTE_CONFIG_UNAVAILABLE' });
+    expect(classifyStartupError(new Error('remote config unauthorized: HTTP 403')).issue)
+      .toMatchObject({ type: 'external', severity: 'S1', code: 'REMOTE_CONFIG_UNAUTHORIZED' });
+    expect(classifyStartupError(new Error('portable workspace repair failed: F:/data/workspace')).issue)
+      .toMatchObject({ type: 'external', severity: 'S1', code: 'PORTABLE_WORKSPACE_REPAIR_FAILED' });
     expect(classifyStartupError(new Error('plugin not found: moonshot')).issue)
       .toMatchObject({ type: 'internal', severity: 'S2', code: 'GATEWAY_PLUGIN_CONFIG_ERROR' });
     expect(classifyStartupError(new Error('boom')).issue)

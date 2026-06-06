@@ -39,9 +39,10 @@ SHARE_EXFAT/data
 │   ├── settings.json
 │   ├── uclaw-providers.json
 │   └── logs
-└── .openclaw
-    ├── openclaw.json
-    └── agents
+└── workspace
+    └── .openclaw
+        ├── openclaw.json
+        └── agents
 ```
 
 Startup priority is:
@@ -52,8 +53,10 @@ Startup priority is:
 4. the normal Electron app data location
 
 The app does not import the user's standalone `~/.openclaw` directory into this
-data root. If the user selects a workspace during Setup, OpenClaw runtime files
-continue to live under `<workspace>/.openclaw`.
+data root. In the fixed USB workbench layout, OpenClaw runtime files live under
+`<dataRoot>/workspace/.openclaw`; UClaw stores the workspace as the relative
+path `workspace`, so moving the drive between Windows machines with different
+drive letters does not reset Setup.
 
 UClaw also does not auto-import old `Roaming\UClaw` or legacy Electron app data
 into a new data root. A new USB/zip data root starts clean, so it cannot
@@ -120,9 +123,43 @@ windows\UClaw.exe --uclaw-data-root "%SCRIPT_DIR%data"
 
 The GitHub Windows `.zip` artifact also contains `uclaw-portable.json`. If a
 user extracts that zip and double-clicks `UClaw.exe` directly, UClaw uses
-`.\data` beside the executable as its data root. The NSIS installer removes this
-marker after installation, so installed builds keep using the normal system data
-location.
+`.\data` beside the executable as its data root and keeps the OpenClaw workspace
+at `.\data\workspace`.
+
+The packaged marker is v2 and includes provisioning metadata for business USB
+packages:
+
+```json
+{
+  "schema": "uclaw-portable-data-root",
+  "version": 2,
+  "dataRoot": "data",
+  "workspaceMode": "portable-workbench",
+  "workspaceDir": "workspace",
+  "provisioning": {
+    "endpoint": "https://tbop954d65.sealosbja.site/uclaw/provision",
+    "packageId": "uclaw-usb-default",
+    "publicKeyId": "sealaf-bja-uclaw-v1"
+  }
+}
+```
+
+At startup, UClaw calls the provisioning endpoint before Gateway starts and
+syncs the New API base URL, API key, default model, and web-search model into
+the local UClaw/OpenClaw runtime stores. The API key is stored in Laf
+environment variables, not in `uclaw-portable.json`.
+
+Build-time overrides are available when producing private packages:
+
+```bash
+UCLAW_PORTABLE_PROVISIONING_ENDPOINT=https://example.com/uclaw/provision \
+UCLAW_PORTABLE_PACKAGE_ID=customer-a-usb \
+UCLAW_PORTABLE_PUBLIC_KEY_ID=customer-a-v1 \
+pnpm run package:win:portable
+```
+
+The NSIS installer removes this marker after installation, so installed builds
+keep using the normal system data location.
 
 ## Linux launch
 

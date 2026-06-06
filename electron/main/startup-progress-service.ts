@@ -16,7 +16,8 @@ import {
 import { getAllSettings, getSetting, setSetting, type AppSettings } from '../utils/store';
 import { logger } from '../utils/logger';
 import { resolveStartupRuntimeConfig, type StartupRuntimeConfig } from '../utils/startup-config';
-import { resolveStartupWorkspaceState } from './workspace-startup';
+import { resolvePortableWorkspaceDir, resolveStartupWorkspaceState } from './workspace-startup';
+import { syncRemoteConfig } from './remote-config-sync';
 import type {
   StartupAction,
   StartupActionRequest,
@@ -191,6 +192,25 @@ export function classifyStartupError(error: unknown): { message: string; actions
     };
   }
 
+  if (normalized.includes('remote config') && (normalized.includes('unauthorized') || normalized.includes('403') || normalized.includes('401'))) {
+    return {
+      message: '远程配置鉴权失败，已阻止启动。',
+      issue: createIssue(
+        'external',
+        'S1',
+        'REMOTE_CONFIG_UNAUTHORIZED',
+        '远程配置鉴权失败',
+        '请联系运维确认随盘配置凭证是否仍有效，或重新下发 UClaw 随盘配置。',
+      ),
+      actions: [
+        { id: 'retry-current-step', label: '重试配置同步', variant: 'primary' },
+        { id: 'open-log-folder', label: '查看日志' },
+        { id: 'copy-diagnostics', label: '复制诊断信息' },
+        { id: 'quit-app', label: '退出应用', variant: 'danger' },
+      ],
+    };
+  }
+
   if (normalized.includes('unauthorized') || normalized.includes('token mismatch')) {
     return {
       message: 'Gateway 认证失败，请重新同步 token 后重试。',
@@ -317,6 +337,44 @@ export function classifyStartupError(error: unknown): { message: string; actions
         { id: 'restart-gateway', label: '重启 Gateway', variant: 'primary' },
         { id: 'open-log-folder', label: '查看日志' },
         { id: 'copy-diagnostics', label: '复制诊断信息' },
+      ],
+    };
+  }
+
+  if (normalized.includes('remote config')) {
+    return {
+      message: '远程配置暂不可用，且本地没有可用缓存，已阻止启动。',
+      issue: createIssue(
+        'external',
+        'S1',
+        normalized.includes('missing provider') ? 'REMOTE_CONFIG_INVALID' : 'REMOTE_CONFIG_UNAVAILABLE',
+        '远程配置不可用',
+        '请检查网络连接，或联系运维确认 Laf 配置下发服务是否正常。处理后可重试配置同步。',
+      ),
+      actions: [
+        { id: 'retry-current-step', label: '重试配置同步', variant: 'primary' },
+        { id: 'open-log-folder', label: '查看日志' },
+        { id: 'copy-diagnostics', label: '复制诊断信息' },
+        { id: 'quit-app', label: '退出应用', variant: 'danger' },
+      ],
+    };
+  }
+
+  if (normalized.includes('portable workspace repair failed')) {
+    return {
+      message: '随盘工作区无法创建或修复，已阻止启动。',
+      issue: createIssue(
+        'external',
+        'S1',
+        'PORTABLE_WORKSPACE_REPAIR_FAILED',
+        '随盘工作区修复失败',
+        '请确认移动盘可写、空间充足且未被安全软件拦截，然后重试启动。',
+      ),
+      actions: [
+        { id: 'open-data-root', label: '打开数据目录', variant: 'secondary' },
+        { id: 'open-log-folder', label: '查看日志' },
+        { id: 'copy-diagnostics', label: '复制诊断信息' },
+        { id: 'quit-app', label: '退出应用', variant: 'danger' },
       ],
     };
   }
@@ -614,6 +672,15 @@ export class StartupProgressService {
         message: '启动配置准备完成',
       }));
 
+      await this.runStep('remote-config-sync', '正在同步远程配置', async () => {
+        const result = await syncRemoteConfig({ appVersion: app.getVersion() });
+        return {
+          status: result.status === 'skipped' ? 'skipped' : result.status,
+          message: result.message,
+          detail: result.detail,
+        };
+      });
+
       const gatewayAutoStart = context.isE2EMode ? false : await getSetting('gatewayAutoStart');
 
       await this.runStep('provider-key-sync', '正在检查 Provider 密钥', async () => {
@@ -891,8 +958,9 @@ export class StartupProgressService {
           buttonLabel: '选择此目录',
         });
         if (!result.canceled && result.filePaths[0]) {
-          const dir = result.filePaths[0];
-          await setSetting('workspaceDir', dir);
+          const portableWorkspace = resolvePortableWorkspaceDir();
+          const dir = portableWorkspace?.resolved ?? result.filePaths[0];
+          await setSetting('workspaceDir', portableWorkspace?.stored ?? result.filePaths[0]);
           process.env.UCLAW_WORKSPACE_DIR = dir;
           await setSetting('setupComplete', false);
           this.setOverall('blockedBySetup', '已选择新工作区，请完成 Setup。', {
@@ -910,7 +978,10 @@ export class StartupProgressService {
       }
       case 'open-workspace-folder': {
         const workspaceDir = await getSetting('workspaceDir');
-        const dir = workspaceDir || getOpenClawConfigDir();
+        const dir = resolvePortableWorkspaceDir()?.resolved
+          ?? process.env.UCLAW_WORKSPACE_DIR
+          ?? workspaceDir
+          ?? getOpenClawConfigDir();
         if (existsSync(dir)) {
           await shell.openPath(dir);
         }

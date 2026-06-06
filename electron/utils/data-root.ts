@@ -25,6 +25,7 @@ export interface DataRootResolution {
   uclawDir: string;
   openclawDir: string;
   source: 'argv' | 'env' | 'portable-marker' | 'default';
+  portable?: PortableDataRootConfig;
   lockPath?: string;
   releaseDataRootLock?: () => void;
 }
@@ -41,6 +42,21 @@ export interface StorageMigrationResult {
   copiedFrom: string[];
 }
 
+export interface PortableProvisioningConfig {
+  endpoint?: string;
+  packageId?: string;
+  publicKeyId?: string;
+}
+
+export interface PortableDataRootConfig {
+  schema: 'uclaw-portable-data-root';
+  version: 1 | 2;
+  dataRoot: string;
+  workspaceMode?: 'portable-workbench';
+  workspaceDir?: string;
+  provisioning?: PortableProvisioningConfig;
+}
+
 export interface DataRootLock {
   lockPath: string;
   owner?: DataRootLockOwner;
@@ -55,6 +71,8 @@ export interface DataRootLockOwner {
   platform: NodeJS.Platform;
   acquiredAt: string;
 }
+
+let configuredPortableDataRootConfig: PortableDataRootConfig | null = null;
 
 export function assertDataRootWritable(dataRoot: string): void {
   const probeDir = join(dataRoot, 'uclaw');
@@ -194,24 +212,80 @@ function readDataRootArg(argv: string[] = process.argv): string | null {
   return null;
 }
 
-function readPortableMarkerDataRoot(exePath: string): string | null {
+function normalizePortableMarker(raw: unknown): PortableDataRootConfig {
+  const parsed = raw as {
+    schema?: unknown;
+    version?: unknown;
+    dataRoot?: unknown;
+    workspaceMode?: unknown;
+    workspaceDir?: unknown;
+    provisioning?: unknown;
+  };
+  if (
+    parsed.schema !== 'uclaw-portable-data-root'
+    || (parsed.version !== 1 && parsed.version !== 2)
+    || typeof parsed.dataRoot !== 'string'
+  ) {
+    throw new Error('unexpected marker schema');
+  }
+
+  if (parsed.version === 1) {
+    return {
+      schema: 'uclaw-portable-data-root',
+      version: 1,
+      dataRoot: parsed.dataRoot,
+    };
+  }
+
+  const marker: PortableDataRootConfig = {
+    schema: 'uclaw-portable-data-root',
+    version: 2,
+    dataRoot: parsed.dataRoot,
+  };
+
+  if (parsed.workspaceMode !== undefined) {
+    if (parsed.workspaceMode !== 'portable-workbench') {
+      throw new Error('unexpected workspace mode');
+    }
+    marker.workspaceMode = parsed.workspaceMode;
+  }
+  if (parsed.workspaceDir !== undefined) {
+    if (typeof parsed.workspaceDir !== 'string' || !parsed.workspaceDir.trim()) {
+      throw new Error('workspaceDir must be a non-empty string');
+    }
+    marker.workspaceDir = parsed.workspaceDir;
+  }
+  if (parsed.provisioning !== undefined) {
+    if (!parsed.provisioning || typeof parsed.provisioning !== 'object' || Array.isArray(parsed.provisioning)) {
+      throw new Error('provisioning must be an object');
+    }
+    const provisioning = parsed.provisioning as Record<string, unknown>;
+    marker.provisioning = {};
+    if (typeof provisioning.endpoint === 'string' && provisioning.endpoint.trim()) {
+      marker.provisioning.endpoint = provisioning.endpoint.trim();
+    }
+    if (typeof provisioning.packageId === 'string' && provisioning.packageId.trim()) {
+      marker.provisioning.packageId = provisioning.packageId.trim();
+    }
+    if (typeof provisioning.publicKeyId === 'string' && provisioning.publicKeyId.trim()) {
+      marker.provisioning.publicKeyId = provisioning.publicKeyId.trim();
+    }
+  }
+
+  if (marker.workspaceMode === 'portable-workbench' && !marker.workspaceDir) {
+    throw new Error('portable-workbench requires workspaceDir');
+  }
+
+  return marker;
+}
+
+function readPortableMarker(exePath: string): { root: string; config: PortableDataRootConfig } | null {
   const markerPath = join(dirname(exePath), PORTABLE_DATA_ROOT_MARKER);
   if (!existsSync(markerPath)) return null;
 
   try {
-    const parsed = JSON.parse(readFileSync(markerPath, 'utf8')) as {
-      schema?: unknown;
-      version?: unknown;
-      dataRoot?: unknown;
-    };
-    if (
-      parsed.schema !== 'uclaw-portable-data-root'
-      || parsed.version !== 1
-      || typeof parsed.dataRoot !== 'string'
-    ) {
-      throw new Error('unexpected marker schema');
-    }
-    return normalizeRootPath(parsed.dataRoot, exePath);
+    const config = normalizePortableMarker(JSON.parse(readFileSync(markerPath, 'utf8')));
+    return { root: normalizeRootPath(config.dataRoot, exePath), config };
   } catch (error) {
     throw new Error(`portable data root marker is invalid: ${markerPath}`, { cause: error });
   }
@@ -221,12 +295,12 @@ export function resolveDataRoot(options: ResolveDataRootOptions): DataRootResolu
   const argRoot = readDataRootArg(options.argv);
   const envRoot = process.env[DATA_ROOT_ENV]?.trim() || null;
   const configuredRoot = argRoot ?? envRoot;
-  const portableMarkerRoot = configuredRoot === null
-    ? readPortableMarkerDataRoot(options.exePath)
+  const portableMarker = configuredRoot === null
+    ? readPortableMarker(options.exePath)
     : null;
   const dataRoot = configuredRoot !== null
     ? normalizeRootPath(configuredRoot, options.exePath)
-    : (portableMarkerRoot ?? resolve(dirname(options.defaultUserDataDir)));
+    : (portableMarker?.root ?? resolve(dirname(options.defaultUserDataDir)));
 
   return {
     dataRoot,
@@ -234,7 +308,8 @@ export function resolveDataRoot(options: ResolveDataRootOptions): DataRootResolu
     openclawDir: join(dataRoot, '.openclaw'),
     source: argRoot !== null
       ? 'argv'
-      : (envRoot ? 'env' : (portableMarkerRoot ? 'portable-marker' : 'default')),
+      : (envRoot ? 'env' : (portableMarker ? 'portable-marker' : 'default')),
+    portable: portableMarker?.config,
   };
 }
 
@@ -244,6 +319,10 @@ export function getConfiguredDataRoot(): string {
 
   // Fallback for utility tests/imports that run outside the main-process bootstrap.
   return join(homedir(), '.uclaw-data');
+}
+
+export function getConfiguredPortableDataRootConfig(): PortableDataRootConfig | null {
+  return configuredPortableDataRootConfig ? { ...configuredPortableDataRootConfig } : null;
 }
 
 function copyMissingRecursive(source: string, target: string, copiedFrom: Set<string>): boolean {
@@ -325,6 +404,7 @@ export function initializeDataRoot(app: ElectronAppLike): DataRootResolution {
     app.setPath('userData', resolution.uclawDir);
     process.env[DATA_ROOT_ENV] = resolution.dataRoot;
     process.env[DATA_ROOT_SOURCE_ENV] = resolution.source;
+    configuredPortableDataRootConfig = resolution.portable ?? null;
 
     // UClaw no longer auto-imports legacy Roaming/AppData state. A fresh data
     // root must stay fresh, especially for USB packages moved between machines.

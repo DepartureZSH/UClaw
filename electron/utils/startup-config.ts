@@ -34,6 +34,7 @@ const STEP_ENV_KEYS: Record<StartupStepId, string> = {
   'workspace-resolve': 'UCLAW_STARTUP_TIMEOUT_WORKSPACE_RESOLVE_MS',
   'setup-check': 'UCLAW_STARTUP_TIMEOUT_SETUP_CHECK_MS',
   'config-sync': 'UCLAW_STARTUP_TIMEOUT_CONFIG_SYNC_MS',
+  'remote-config-sync': 'UCLAW_STARTUP_TIMEOUT_REMOTE_CONFIG_SYNC_MS',
   'provider-key-sync': 'UCLAW_STARTUP_TIMEOUT_PROVIDER_KEY_SYNC_MS',
   'gateway-start': 'UCLAW_STARTUP_TIMEOUT_GATEWAY_START_MS',
 };
@@ -58,6 +59,7 @@ export const DEFAULT_STARTUP_RUNTIME_CONFIG: StartupRuntimeConfig = {
     'workspace-resolve': 15_000,
     'setup-check': 5_000,
     'config-sync': 20_000,
+    'remote-config-sync': 20_000,
     'provider-key-sync': 10_000,
     'gateway-start': 120_000,
   },

@@ -77,6 +77,42 @@ describe('data root', () => {
     expect(resolved.dataRoot).toBe(resolve(exeDir, 'data'));
   });
 
+  it('reads v2 portable workbench metadata from the marker', async () => {
+    const exeDir = await makeTempDir('uclaw-portable-exe-');
+    const exePath = join(exeDir, 'UClaw.exe');
+    await writeFile(join(exeDir, 'uclaw-portable.json'), `${JSON.stringify({
+      schema: 'uclaw-portable-data-root',
+      version: 2,
+      dataRoot: 'data',
+      workspaceMode: 'portable-workbench',
+      workspaceDir: 'workspace',
+      provisioning: {
+        endpoint: 'https://laf.example.test/uclaw/provision',
+        packageId: 'usb-001',
+        publicKeyId: 'laf-key-1',
+      },
+    })}\n`, 'utf8');
+
+    const resolved = resolveDataRoot({
+      argv: ['UClaw.exe'],
+      defaultUserDataDir: 'C:\\Users\\me\\AppData\\Roaming\\UClaw',
+      exePath,
+    });
+
+    expect(resolved.source).toBe('portable-marker');
+    expect(resolved.dataRoot).toBe(resolve(exeDir, 'data'));
+    expect(resolved.portable).toMatchObject({
+      version: 2,
+      workspaceMode: 'portable-workbench',
+      workspaceDir: 'workspace',
+      provisioning: {
+        endpoint: 'https://laf.example.test/uclaw/provision',
+        packageId: 'usb-001',
+        publicKeyId: 'laf-key-1',
+      },
+    });
+  });
+
   it('lets explicit startup arguments override the portable marker', async () => {
     const exeDir = await makeTempDir('uclaw-portable-exe-');
     const exePath = join(exeDir, 'UClaw.exe');

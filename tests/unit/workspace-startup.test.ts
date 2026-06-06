@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { resolve } from 'path';
 import { resolveStartupWorkspaceState } from '@electron/main/workspace-startup';
 import type { AppSettings } from '@electron/utils/store';
 
@@ -74,5 +75,59 @@ describe('resolveStartupWorkspaceState', () => {
       resetWorkspaceDir: undefined,
     });
     expect(store.settings.setupComplete).toBe(false);
+  });
+
+  it('uses the portable workbench workspace and stores a relative path', async () => {
+    const store = createSettings({
+      setupComplete: true,
+      workspaceDir: 'E:/old-drive/workspace',
+    });
+
+    const result = await resolveStartupWorkspaceState({
+      getSetting: store.getSetting,
+      setSetting: store.setSetting,
+      dataRoot: 'F:/windows/data',
+      ensureWorkspace: vi.fn(),
+      portableConfig: {
+        schema: 'uclaw-portable-data-root',
+        version: 2,
+        dataRoot: 'data',
+        workspaceMode: 'portable-workbench',
+        workspaceDir: 'workspace',
+      },
+    });
+
+    expect(result).toMatchObject({
+      setupComplete: true,
+      workspaceDir: resolve('F:/windows/data', 'workspace'),
+      storedWorkspaceDir: 'workspace',
+    });
+    expect(store.settings.workspaceDir).toBe('workspace');
+    expect(store.settings.setupComplete).toBe(true);
+  });
+
+  it('repairs empty completed workspace state in portable workbench mode', async () => {
+    const store = createSettings({
+      setupComplete: true,
+      workspaceDir: '',
+    });
+
+    const result = await resolveStartupWorkspaceState({
+      getSetting: store.getSetting,
+      setSetting: store.setSetting,
+      dataRoot: 'F:/windows/data',
+      ensureWorkspace: vi.fn(),
+      portableConfig: {
+        schema: 'uclaw-portable-data-root',
+        version: 2,
+        dataRoot: 'data',
+        workspaceMode: 'portable-workbench',
+        workspaceDir: 'workspace',
+      },
+    });
+
+    expect(result.setupComplete).toBe(true);
+    expect(result.storedWorkspaceDir).toBe('workspace');
+    expect(store.settings.workspaceDir).toBe('workspace');
   });
 });

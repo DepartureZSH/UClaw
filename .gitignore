@@ -78,6 +78,7 @@ UClaw 双分区便携版修复计划.md
 .cursor/
 .claude/
 .codex/
+.laf-work/
 .pnpm-store/
 package-lock.json
 

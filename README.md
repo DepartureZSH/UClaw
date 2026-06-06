@@ -134,7 +134,7 @@ Light mode, dark mode, or system-synchronized themes. UClaw adapts to your prefe
 In **Settings → General**, you can enable **Launch at system startup** so UClaw starts automatically after login.
 
 ### Startup Diagnostics Configuration
-Startup loading and Gateway startup timings are centralized in `electron/utils/startup-config.ts`. Advanced builds can override them through the persisted settings object (`startup.stepTimeouts` and `startup.gateway`) or through environment variables. Common overrides include `UCLAW_STARTUP_TIMEOUT_GATEWAY_START_MS`, `UCLAW_GATEWAY_READY_WAIT_TIMEOUT_MS`, `UCLAW_GATEWAY_CONNECT_HANDSHAKE_TIMEOUT_MS`, and `UCLAW_GATEWAY_CHALLENGE_TIMEOUT_MS`.
+Startup loading and Gateway startup timings are centralized in `electron/utils/startup-config.ts`. Advanced builds can override them through the persisted settings object (`startup.stepTimeouts` and `startup.gateway`) or through environment variables. Common overrides include `UCLAW_STARTUP_TIMEOUT_REMOTE_CONFIG_SYNC_MS`, `UCLAW_STARTUP_TIMEOUT_GATEWAY_START_MS`, `UCLAW_GATEWAY_READY_WAIT_TIMEOUT_MS`, `UCLAW_GATEWAY_CONNECT_HANDSHAKE_TIMEOUT_MS`, and `UCLAW_GATEWAY_CHALLENGE_TIMEOUT_MS`.
 
 ---
 
@@ -389,7 +389,7 @@ pnpm run package:portable:dual  # Build the recommended dual-partition portable 
 
 On headless Linux, run Electron tests under a display server such as `xvfb-run -a pnpm run test:e2e`.
 
-For USB/hard-drive builds, prefer the dual-partition layout documented in [`docs/portable-usb.md`](docs/portable-usb.md). macOS `.app` bundles should live on APFS, while Windows/Linux builds and shared UClaw data/workspace can live on ExFAT. Launchers pass `--uclaw-data-root` explicitly; the GitHub Windows `.zip` also includes a portable marker so direct `UClaw.exe` launches use the adjacent `data/` directory. New data roots no longer auto-import old Roaming/UClaw app data. If macOS reports App Translocation, see [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md).
+For USB/hard-drive builds, prefer the dual-partition layout documented in [`docs/portable-usb.md`](docs/portable-usb.md). macOS `.app` bundles should live on APFS, while Windows/Linux builds and shared UClaw data/workspace can live on ExFAT. The GitHub Windows `.zip` includes a v2 portable marker: direct `UClaw.exe` launches use the adjacent `data/` directory, keep the OpenClaw workspace at `data/workspace`, and do not store drive-letter-specific workspace paths. New data roots no longer auto-import old Roaming/UClaw app data. Business USB packages may also include provisioning metadata so startup can sync the New API and web-search configuration from a managed Laf endpoint before Gateway starts. If macOS reports App Translocation, see [`docs/macos-external-app-troubleshooting.md`](docs/macos-external-app-troubleshooting.md).
 
 ### Communication Regression Checks
 
