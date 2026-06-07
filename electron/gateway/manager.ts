@@ -300,6 +300,7 @@ export class GatewayManager extends EventEmitter {
 
     this.startLock = true;
     const startEpoch = this.lifecycleController.bump('start');
+    await this.syncConfiguredPort();
     logger.info(`Gateway start requested (port=${this.status.port})`);
     this.lastSpawnSummary = null;
     this.shouldReconnect = true;
@@ -1353,5 +1354,22 @@ export class GatewayManager extends EventEmitter {
    */
   private setStatus(update: Partial<GatewayStatus>): void {
     this.stateController.setStatus(update);
+  }
+
+  private async syncConfiguredPort(): Promise<void> {
+    try {
+      const { getSetting } = await import('../utils/store');
+      const configuredPort = await getSetting('gatewayPort');
+      if (
+        Number.isInteger(configuredPort)
+        && configuredPort >= 1
+        && configuredPort <= 65535
+        && configuredPort !== this.status.port
+      ) {
+        this.setStatus({ port: configuredPort });
+      }
+    } catch (error) {
+      logger.warn('Failed to read configured Gateway port; using current port:', error);
+    }
   }
 }

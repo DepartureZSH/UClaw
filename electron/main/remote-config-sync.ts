@@ -10,6 +10,10 @@ import {
 } from '../utils/data-root';
 import { logger } from '../utils/logger';
 import { getSetting } from '../utils/store';
+import {
+  syncDefaultProviderToRuntime,
+  syncSavedProviderToRuntime,
+} from '../services/providers/provider-runtime-sync';
 
 const REMOTE_CONFIG_ENDPOINT_ENV = 'UCLAW_REMOTE_CONFIG_ENDPOINT';
 const REMOTE_CONFIG_PACKAGE_ID_ENV = 'UCLAW_REMOTE_CONFIG_PACKAGE_ID';
@@ -154,7 +158,7 @@ async function fetchRemoteConfig(
 export async function applyRemoteConfig(config: RemoteConfigPayload): Promise<void> {
   const now = new Date().toISOString();
   const providerId = config.provider.id || 'new-api';
-  await saveProvider({
+  const providerConfig = {
     id: providerId,
     name: providerId === 'new-api' ? 'New API' : providerId,
     type: providerId,
@@ -164,9 +168,12 @@ export async function applyRemoteConfig(config: RemoteConfigPayload): Promise<vo
     enabled: true,
     createdAt: now,
     updatedAt: now,
-  });
+  } as const;
+  await saveProvider(providerConfig);
   await storeApiKey(providerId, config.provider.apiKey);
   await setDefaultProvider(providerId);
+  await syncSavedProviderToRuntime(providerConfig, config.provider.apiKey);
+  await syncDefaultProviderToRuntime(providerId);
   await applyInitialPluginConfig(
     config.provider.apiKey,
     config.provider.baseUrl,

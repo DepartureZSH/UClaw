@@ -67,6 +67,7 @@ if (process.platform === 'win32') {
 
 const WINDOWS_APP_USER_MODEL_ID = 'app.uclaw.desktop';
 const isE2EMode = process.env.UCLAW_E2E === '1';
+const skipElectronSingleInstanceLock = isE2EMode || process.env.UCLAW_SKIP_ELECTRON_SINGLE_INSTANCE_LOCK === '1';
 let dataRootResolution: DataRootResolution;
 let earlyStartupError: unknown = null;
 
@@ -105,7 +106,7 @@ if (process.platform === 'linux') {
 // same port, then each treats the other's gateway as "orphaned" and kills
 // it — creating an infinite kill/restart loop on Windows.
 // The losing process must exit immediately so it never reaches Gateway startup.
-const gotElectronLock = isE2EMode ? true : app.requestSingleInstanceLock();
+const gotElectronLock = skipElectronSingleInstanceLock ? true : app.requestSingleInstanceLock();
 if (!gotElectronLock) {
   console.info('[UClaw] Another instance already holds the single-instance lock; exiting duplicate process');
   app.exit(0);

@@ -9,6 +9,8 @@ const storeApiKeyMock = vi.fn();
 const applyInitialPluginConfigMock = vi.fn();
 const loggerWarnMock = vi.fn();
 const getSettingMock = vi.fn();
+const syncSavedProviderToRuntimeMock = vi.fn();
+const syncDefaultProviderToRuntimeMock = vi.fn();
 
 let dataRoot = '';
 let portableConfig: unknown = null;
@@ -37,6 +39,11 @@ vi.mock('@electron/utils/logger', () => ({
 
 vi.mock('@electron/utils/store', () => ({
   getSetting: (...args: unknown[]) => getSettingMock(...args),
+}));
+
+vi.mock('@electron/services/providers/provider-runtime-sync', () => ({
+  syncSavedProviderToRuntime: (...args: unknown[]) => syncSavedProviderToRuntimeMock(...args),
+  syncDefaultProviderToRuntime: (...args: unknown[]) => syncDefaultProviderToRuntimeMock(...args),
 }));
 
 function makeConfig(version: string, apiKey = 'sk-test') {
@@ -74,6 +81,8 @@ describe('remote config sync', () => {
     delete process.env.UCLAW_REMOTE_CONFIG_ENDPOINT;
     delete process.env.UCLAW_REMOTE_CONFIG_PACKAGE_ID;
     getSettingMock.mockResolvedValue('');
+    syncSavedProviderToRuntimeMock.mockResolvedValue(undefined);
+    syncDefaultProviderToRuntimeMock.mockResolvedValue(undefined);
     globalThis.fetch = vi.fn() as typeof fetch;
   });
 
@@ -105,6 +114,13 @@ describe('remote config sync', () => {
     }));
     expect(storeApiKeyMock).toHaveBeenCalledWith('new-api', 'sk-test');
     expect(setDefaultProviderMock).toHaveBeenCalledWith('new-api');
+    expect(syncSavedProviderToRuntimeMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'new-api',
+      type: 'new-api',
+      baseUrl: 'https://new-api.example.test/v1',
+      model: 'deepseek-ai/DeepSeek-V3.2',
+    }), 'sk-test');
+    expect(syncDefaultProviderToRuntimeMock).toHaveBeenCalledWith('new-api');
     expect(applyInitialPluginConfigMock).toHaveBeenCalledWith(
       'sk-test',
       'https://new-api.example.test/v1',
