@@ -108,7 +108,7 @@ describe('StartupProgressService', () => {
     getOpenClawRuntimeCredentialProvidersMock.mockResolvedValue(new Set());
     listProviderAccountsMock.mockResolvedValue([]);
     getProviderSecretMock.mockResolvedValue(null);
-    syncRemoteConfigMock.mockResolvedValue({ status: 'skipped', message: '未配置远程配置下发，跳过' });
+    syncRemoteConfigMock.mockResolvedValue({ status: 'success', message: '远程配置已同步：v1' });
   });
 
   it('advances through startup steps and skips provider/gateway when auto-start is disabled', async () => {
@@ -131,7 +131,7 @@ describe('StartupProgressService', () => {
       ['workspace-resolve', 'success'],
       ['setup-check', 'success'],
       ['config-sync', 'success'],
-      ['remote-config-sync', 'skipped'],
+      ['remote-config-sync', 'success'],
       ['provider-key-sync', 'skipped'],
       ['gateway-start', 'skipped'],
     ]);
@@ -161,7 +161,34 @@ describe('StartupProgressService', () => {
     expect(setSettingMock).toHaveBeenCalledWith('setupComplete', true);
     expect(snapshot.steps.find((step) => step.id === 'setup-check')?.status).toBe('success');
     expect(snapshot.steps.find((step) => step.id === 'gateway-start')?.status).toBe('skipped');
-    expect(snapshot.steps.find((step) => step.id === 'remote-config-sync')?.status).toBe('skipped');
+    expect(snapshot.steps.find((step) => step.id === 'remote-config-sync')?.status).toBe('success');
+    expect(gatewayManager.start).not.toHaveBeenCalled();
+  });
+
+  it('blocks on the company key page when remote provisioning is not configured', async () => {
+    syncRemoteConfigMock.mockResolvedValue({ status: 'skipped', message: '未配置远程配置下发，跳过' });
+    const { StartupProgressService } = await import('@electron/main/startup-progress-service');
+    const gatewayManager = new FakeGatewayManager();
+    const service = new StartupProgressService({
+      gatewayManager: gatewayManager as never,
+      getMainWindow: () => null,
+    });
+
+    const snapshot = await service.runInitialStartup({
+      isE2EMode: false,
+      storageDiagnostics: { isAppTranslocated: false },
+    });
+
+    expect(snapshot.status).toBe('blockedBySetup');
+    expect(snapshot.issue).toMatchObject({
+      type: 'normal-blocking',
+      severity: 'S3',
+      code: 'COMPANY_KEY_REQUIRED',
+    });
+    expect(snapshot.currentStep).toBe('remote-config-sync');
+    expect(snapshot.actions.some((action) => action.id === 'enter-company-key')).toBe(true);
+    expect(snapshot.steps.find((step) => step.id === 'provider-key-sync')?.status).toBe('skipped');
+    expect(snapshot.steps.find((step) => step.id === 'gateway-start')?.status).toBe('skipped');
     expect(gatewayManager.start).not.toHaveBeenCalled();
   });
 

@@ -760,17 +760,20 @@ exports.default = async function afterPack(context) {
   // + CopyFiles path for NSIS, and provide a Windows zip target for USB use.
   if (platform === 'win32') {
     const portableMarkerPath = join(appOutDir, 'uclaw-portable.json');
+    const provisioning = {
+      endpoint: process.env.UCLAW_PORTABLE_PROVISIONING_ENDPOINT || 'https://tbop954d65.sealosbja.site/uclaw/provision',
+      publicKeyId: process.env.UCLAW_PORTABLE_PUBLIC_KEY_ID || 'sealaf-bja-uclaw-v1',
+    };
+    if (process.env.UCLAW_PORTABLE_PACKAGE_ID) {
+      provisioning.packageId = process.env.UCLAW_PORTABLE_PACKAGE_ID;
+    }
     writeFileSync(portableMarkerPath, `${JSON.stringify({
       schema: 'uclaw-portable-data-root',
       version: 2,
       dataRoot: 'data',
       workspaceMode: 'portable-workbench',
       workspaceDir: 'workspace',
-      provisioning: {
-        endpoint: process.env.UCLAW_PORTABLE_PROVISIONING_ENDPOINT || 'https://tbop954d65.sealosbja.site/uclaw/provision',
-        packageId: process.env.UCLAW_PORTABLE_PACKAGE_ID || 'uclaw-usb-default',
-        publicKeyId: process.env.UCLAW_PORTABLE_PUBLIC_KEY_ID || 'sealaf-bja-uclaw-v1',
-      },
+      provisioning,
     }, null, 2)}\n`, 'utf8');
     console.log(`[after-pack] ✅ Wrote Windows zip portable data-root marker: ${portableMarkerPath}`);
 

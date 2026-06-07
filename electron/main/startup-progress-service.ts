@@ -675,7 +675,7 @@ export class StartupProgressService {
         message: '启动配置准备完成',
       }));
 
-      await this.runStep('remote-config-sync', '正在同步远程配置', async () => {
+      const remoteConfigResult = await this.runStep('remote-config-sync', '正在同步远程配置', async () => {
         const result = await syncRemoteConfig({ appVersion: app.getVersion() });
         return {
           status: result.status === 'skipped' ? 'skipped' : result.status,
@@ -683,6 +683,26 @@ export class StartupProgressService {
           detail: result.detail,
         };
       });
+
+      if (remoteConfigResult?.status === 'skipped') {
+        this.skipRemaining('provider-key-sync', '等待公司密钥');
+        this.setOverall('blockedBySetup', '请先填写公司密钥，以同步 AI 和联网搜索配置。', {
+          issue: createIssue(
+            'normal-blocking',
+            'S3',
+            'COMPANY_KEY_REQUIRED',
+            '需要公司密钥',
+            '公开发布包不会内置公司配置凭证。请由运维输入公司密钥完成随盘工作台初始化，之后普通用户即可免配置使用。',
+          ),
+          actions: [
+            { id: 'enter-company-key', label: '填写公司密钥', variant: 'primary' },
+            { id: 'copy-diagnostics', label: '复制诊断信息' },
+            { id: 'quit-app', label: '退出应用', variant: 'danger' },
+          ],
+          currentStep: 'remote-config-sync',
+        });
+        return this.getSnapshot();
+      }
 
       const gatewayAutoStart = context.isE2EMode ? false : await getSetting('gatewayAutoStart');
 

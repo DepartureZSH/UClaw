@@ -126,8 +126,10 @@ user extracts that zip and double-clicks `UClaw.exe` directly, UClaw uses
 `.\data` beside the executable as its data root and keeps the OpenClaw workspace
 at `.\data\workspace`.
 
-The packaged marker is v2 and includes provisioning metadata for business USB
-packages:
+The packaged marker is v2. Public GitHub zip artifacts include only portable
+layout metadata and the public provisioning endpoint. They must not include a
+package credential. Private USB packages may add `packageId` during operator
+initialization or private packaging.
 
 ```json
 {
@@ -137,17 +139,18 @@ packages:
   "workspaceMode": "portable-workbench",
   "workspaceDir": "workspace",
   "provisioning": {
-    "endpoint": "https://tbop954d65.sealosbja.site/uclaw/provision",
-    "packageId": "uclaw-usb-default",
-    "publicKeyId": "sealaf-bja-uclaw-v1"
+    "endpoint": "https://<laf-app-domain>/uclaw/provision",
+    "publicKeyId": "<server-key-id>"
   }
 }
 ```
 
-At startup, UClaw calls the provisioning endpoint before Gateway starts and
-syncs the New API base URL, API key, default model, and web-search model into
-the local UClaw/OpenClaw runtime stores. The API key is stored in Laf
-environment variables, not in `uclaw-portable.json`.
+At startup, if a company key or private package id is available, UClaw calls
+the provisioning endpoint before Gateway starts and syncs the New API base URL,
+API key, default model, and web-search model into the local UClaw/OpenClaw
+runtime stores. The API key is stored in Laf environment variables, not in
+`uclaw-portable.json`. If no credential is present and no cached config exists,
+startup stays on the company key page for operator initialization.
 
 Build-time overrides are available when producing private packages:
 
