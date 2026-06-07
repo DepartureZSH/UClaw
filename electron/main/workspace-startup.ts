@@ -64,14 +64,18 @@ export async function resolveStartupWorkspaceState(options: {
   const portableConfig = options.portableConfig ?? getConfiguredPortableDataRootConfig();
 
   let setupComplete = await readSetting('setupComplete');
-  let workspaceDir = setupComplete ? await readSetting('workspaceDir') : '';
+  let workspaceDir = await readSetting('workspaceDir');
 
-  if (setupComplete && isPortableWorkbench(portableConfig)) {
+  if (isPortableWorkbench(portableConfig)) {
     const portableWorkspace = resolvePortableWorkspaceDir(dataRoot, portableConfig);
     if (!portableWorkspace) {
       throw new Error('portable workspace resolution failed');
     }
     ensureWorkspace(portableWorkspace.resolved);
+    if (!setupComplete) {
+      await writeSetting('setupComplete', true);
+      setupComplete = true;
+    }
     if (workspaceDir !== portableWorkspace.stored) {
       await writeSetting('workspaceDir', portableWorkspace.stored);
     }

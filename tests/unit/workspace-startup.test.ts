@@ -130,4 +130,31 @@ describe('resolveStartupWorkspaceState', () => {
     expect(result.storedWorkspaceDir).toBe('workspace');
     expect(store.settings.workspaceDir).toBe('workspace');
   });
+
+  it('auto-completes setup for a fresh portable workbench data root', async () => {
+    const store = createSettings({
+      setupComplete: false,
+      workspaceDir: '',
+    });
+
+    const result = await resolveStartupWorkspaceState({
+      getSetting: store.getSetting,
+      setSetting: store.setSetting,
+      dataRoot: 'F:/windows/data',
+      ensureWorkspace: vi.fn(),
+      portableConfig: {
+        schema: 'uclaw-portable-data-root',
+        version: 2,
+        dataRoot: 'data',
+        workspaceMode: 'portable-workbench',
+        workspaceDir: 'workspace',
+      },
+    });
+
+    expect(result.setupComplete).toBe(true);
+    expect(result.workspaceDir).toBe(resolve('F:/windows/data', 'workspace'));
+    expect(result.storedWorkspaceDir).toBe('workspace');
+    expect(store.settings.setupComplete).toBe(true);
+    expect(store.settings.workspaceDir).toBe('workspace');
+  });
 });
