@@ -125,6 +125,29 @@ describe('ProviderService.listAccounts (openclaw.json as sole source of truth)',
     expect(result).toEqual([]);
   });
 
+  it('handles legacy store accounts without updatedAt when choosing the newest account', async () => {
+    const legacyAccount = makeAccount({
+      id: 'new-api-old',
+      vendorId: 'new-api' as ProviderAccount['vendorId'],
+      label: 'Old New API',
+      updatedAt: undefined as unknown as string,
+    });
+    const currentAccount = makeAccount({
+      id: 'new-api-current',
+      vendorId: 'new-api' as ProviderAccount['vendorId'],
+      label: 'Current New API',
+      updatedAt: '2026-06-07T09:59:49.000Z',
+    });
+    mocks.listProviderAccounts.mockResolvedValue([legacyAccount, currentAccount]);
+    mocks.getActiveOpenClawProviders.mockResolvedValue(new Set<string>(['new-api']));
+
+    const result = await service.listAccounts();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe('new-api-current');
+    expect(mocks.deleteProviderAccount).toHaveBeenCalledWith('new-api-old');
+  });
+
   it('returns only providers present in openclaw.json, ignoring extra store accounts', async () => {
     mocks.listProviderAccounts.mockResolvedValue([
       makeAccount({ id: 'moonshot-1', vendorId: 'moonshot' as ProviderAccount['vendorId'] }),

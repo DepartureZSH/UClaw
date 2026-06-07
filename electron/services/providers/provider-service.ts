@@ -48,6 +48,12 @@ function maskApiKey(apiKey: string | null): string | null {
 
 const legacyProviderApiWarned = new Set<string>();
 
+function compareProviderAccountsByUpdatedAtDesc(a: ProviderAccount, b: ProviderAccount): number {
+  const left = typeof a.updatedAt === 'string' ? a.updatedAt : '';
+  const right = typeof b.updatedAt === 'string' ? b.updatedAt : '';
+  return right.localeCompare(left);
+}
+
 function logLegacyProviderApiUsage(method: string, replacement: string): void {
   if (legacyProviderApiWarned.has(method)) {
     return;
@@ -127,7 +133,7 @@ export class ProviderService {
         // 2. Among equal variants, prefer the most recently updated
         const aliasAccounts = storeGroup.filter((a) => a.vendorId !== key);
         const candidates = aliasAccounts.length > 0 ? aliasAccounts : storeGroup;
-        candidates.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+        candidates.sort(compareProviderAccountsByUpdatedAtDesc);
         const kept = candidates[0];
         await importRuntimeApiKeyIfMissing(kept, key);
         result.push(kept);
