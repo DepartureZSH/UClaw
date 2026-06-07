@@ -41,6 +41,7 @@ interface SettingsState {
 
   // Setup
   setupComplete: boolean;
+  companyKey: string;
 
   // Actions
   init: () => Promise<void>;
@@ -87,6 +88,7 @@ const defaultSettings = {
   sidebarCollapsed: false,
   devModeUnlocked: false,
   setupComplete: false,
+  companyKey: '',
 };
 
 export const SETTINGS_PERSIST_VERSION = 1;

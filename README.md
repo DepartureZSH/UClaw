@@ -167,16 +167,11 @@ pnpm dev
 ```
 ### First Launch
 
-When you launch UClaw for the first time, the **Setup Wizard** will guide you through:
+Current commercial ZIP builds start directly with the in-window startup page. The old first-run Setup Wizard is no longer part of the normal user flow.
 
-1. **Language & Region** – Configure your preferred locale
-2. **Workspace** – Choose where OpenClaw data should be stored
-3. **Environment Check** – Verify the bundled runtime and Gateway
-4. **AI Configuration** – Configure the default New API endpoint and model when needed
-5. **Essential Components** – Install the default local tools
-
-The wizard preselects your system language when it is supported, and falls back to English otherwise.
-If the selected workspace already contains `.openclaw/openclaw.json`, the wizard reuses that OpenClaw configuration and skips the AI key entry step.
+- Windows ZIP builds use the portable workbench beside the app: `data/` for UClaw data and `data/workspace` for OpenClaw runtime files.
+- AI and web-search settings are synchronized from the managed company configuration service.
+- If the package credential is missing or expired, UClaw shows a **Company Key** page. End users only enter the company key provided by operations; they do not choose a workspace or manually enter API endpoints/API keys.
 
 > Web search note: UClaw uses Kimi/Moonshot-style web search through the New API service by default. End users should use the in-app one-click configuration or switching flow; they do not need to deploy their own endpoint or edit OpenClaw configuration files manually.
 
@@ -349,7 +344,7 @@ Chain multiple skills together to create sophisticated automation pipelines. Pro
 │   ├── lib/                 # Unified frontend API + error model
 │   ├── stores/              # Zustand stores (settings/chat/gateway)
 │   ├── components/          # Reusable UI components
-│   ├── pages/               # Setup/Dashboard/Chat/Channels/Skills/Cron/Settings
+│   ├── pages/               # Startup/CompanyKey/Chat/Models/Channels/Skills/Cron/Settings
 │   ├── i18n/                # Localization resources
 │   └── types/               # TypeScript type definitions
 ├── tests/

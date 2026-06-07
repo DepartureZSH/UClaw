@@ -16,7 +16,7 @@ import { Channels } from './pages/Channels';
 import { Skills } from './pages/Skills';
 import { Cron } from './pages/Cron';
 import { Settings } from './pages/Settings';
-import { Setup } from './pages/Setup';
+import { CompanyKeyPage } from './pages/CompanyKeyPage';
 import { StartupLoadingPage } from './pages/StartupLoadingPage';
 import { ErrorRepairPage } from './pages/ErrorRepairPage';
 import { useSettingsStore } from './stores/settings';
@@ -90,12 +90,9 @@ function App() {
   const [storageDiagnostics, setStorageDiagnostics] = useState<StorageDiagnostics | null>(null);
   const [storageDiagnosticsLoaded, setStorageDiagnosticsLoaded] = useState(false);
   const [globalError, setGlobalError] = useState<{ error: unknown; detail?: string } | null>(null);
-  const skipSetupForE2E = typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).get('e2eSkipSetup') === '1';
   const initSettings = useSettingsStore((state) => state.init);
   const theme = useSettingsStore((state) => state.theme);
   const language = useSettingsStore((state) => state.language);
-  const setupComplete = useSettingsStore((state) => state.setupComplete);
   const initGateway = useGatewayStore((state) => state.init);
   const initProviders = useProviderStore((state) => state.init);
   const initStartup = useStartupStore((state) => state.init);
@@ -144,17 +141,6 @@ function App() {
     if (startupSnapshot?.status !== 'ready') return;
     initProviders();
   }, [initProviders, storageDiagnosticsLoaded, storageDiagnostics?.isAppTranslocated, startupSnapshot?.status]);
-
-  // Redirect to setup wizard if not complete
-  useEffect(() => {
-    if (storageDiagnostics?.isAppTranslocated) return;
-    if (
-      (startupSnapshot?.status === 'blockedBySetup' || (!setupComplete && !skipSetupForE2E))
-      && !location.pathname.startsWith('/setup')
-    ) {
-      navigate('/setup');
-    }
-  }, [setupComplete, skipSetupForE2E, location.pathname, navigate, storageDiagnostics?.isAppTranslocated, startupSnapshot?.status]);
 
   // Listen for navigation events from main process
   useEffect(() => {
@@ -218,6 +204,7 @@ function App() {
   }, []);
 
   const extraRoutes = rendererExtensionRegistry.getExtraRoutes();
+  const isCompanyKeyRoute = location.pathname.startsWith('/company-key') || location.pathname.startsWith('/setup');
 
   if (globalError) {
     const model = classifyRendererError(globalError.error);
@@ -275,8 +262,19 @@ function App() {
       <ErrorBoundary>
         <TooltipProvider delayDuration={300}>
           <Routes>
-            <Route path="*" element={<Setup />} />
+            <Route path="*" element={<CompanyKeyPage />} />
           </Routes>
+          <Toaster position="bottom-right" richColors closeButton style={{ zIndex: 99999 }} />
+        </TooltipProvider>
+      </ErrorBoundary>
+    );
+  }
+
+  if (isCompanyKeyRoute && startupSnapshot?.status !== 'ready') {
+    return (
+      <ErrorBoundary>
+        <TooltipProvider delayDuration={300}>
+          <CompanyKeyPage />
           <Toaster position="bottom-right" richColors closeButton style={{ zIndex: 99999 }} />
         </TooltipProvider>
       </ErrorBoundary>
@@ -298,8 +296,8 @@ function App() {
     <ErrorBoundary>
       <TooltipProvider delayDuration={300}>
         <Routes>
-          {/* Setup wizard (shown on first launch) */}
-          <Route path="/setup/*" element={<Setup />} />
+          <Route path="/setup/*" element={<CompanyKeyPage />} />
+          <Route path="/company-key" element={<CompanyKeyPage />} />
 
           {/* Main application routes */}
           <Route element={<MainLayout />}>

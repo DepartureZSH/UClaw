@@ -2238,6 +2238,21 @@ function registerAppHandlers(): void {
 
   ipcMain.handle('app:getWorkspaceDir', () => process.env.UCLAW_WORKSPACE_DIR ?? '');
 
+  ipcMain.handle('app:getCompanyKey', async () => {
+    return await getSetting('companyKey');
+  });
+
+  ipcMain.handle('app:setCompanyKey', async (_, value: string) => {
+    const companyKey = typeof value === 'string' ? value.trim() : '';
+    await setSetting('companyKey', companyKey);
+    if (companyKey) {
+      process.env.UCLAW_REMOTE_CONFIG_PACKAGE_ID = companyKey;
+    } else {
+      delete process.env.UCLAW_REMOTE_CONFIG_PACKAGE_ID;
+    }
+    return { success: true };
+  });
+
   ipcMain.handle('app:workspaceHasOpenClawConfig', async (_, dir: string) => {
     const workspaceDir = typeof dir === 'string' ? dir.trim() : '';
     const configPath = workspaceDir

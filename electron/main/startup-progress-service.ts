@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, shell, type BrowserWindow } from 'electron';
+import { app, ipcMain, shell, type BrowserWindow } from 'electron';
 import { existsSync } from 'node:fs';
 import type { GatewayManager, GatewayStatus } from '../gateway/manager';
 import { syncAllProviderAuthToRuntime, syncDefaultProviderToRuntime } from '../services/providers/provider-runtime-sync';
@@ -200,10 +200,11 @@ export function classifyStartupError(error: unknown): { message: string; actions
         'S1',
         'REMOTE_CONFIG_UNAUTHORIZED',
         '远程配置鉴权失败',
-        '请联系运维确认随盘配置凭证是否仍有效，或重新下发 UClaw 随盘配置。',
+        '请填写或更换公司密钥；如果仍失败，请联系运维确认该密钥是否仍有效。',
       ),
       actions: [
-        { id: 'retry-current-step', label: '重试配置同步', variant: 'primary' },
+        { id: 'enter-company-key', label: '填写公司密钥', variant: 'primary' },
+        { id: 'retry-current-step', label: '重试配置同步' },
         { id: 'open-log-folder', label: '查看日志' },
         { id: 'copy-diagnostics', label: '复制诊断信息' },
         { id: 'quit-app', label: '退出应用', variant: 'danger' },
@@ -349,10 +350,11 @@ export function classifyStartupError(error: unknown): { message: string; actions
         'S1',
         normalized.includes('missing provider') ? 'REMOTE_CONFIG_INVALID' : 'REMOTE_CONFIG_UNAVAILABLE',
         '远程配置不可用',
-        '请检查网络连接，或联系运维确认 Laf 配置下发服务是否正常。处理后可重试配置同步。',
+        '请检查网络连接，确认公司密钥已填写；如果仍失败，请联系运维确认 Laf 配置下发服务是否正常。',
       ),
       actions: [
         { id: 'retry-current-step', label: '重试配置同步', variant: 'primary' },
+        { id: 'enter-company-key', label: '填写公司密钥' },
         { id: 'open-log-folder', label: '查看日志' },
         { id: 'copy-diagnostics', label: '复制诊断信息' },
         { id: 'quit-app', label: '退出应用', variant: 'danger' },
@@ -642,17 +644,18 @@ export class StartupProgressService {
           ? true
           : await getSetting('setupComplete');
         if (!setupComplete) {
+          await setSetting('setupComplete', true);
           return {
-            status: 'skipped',
-            message: 'Setup 尚未完成',
+            status: 'success',
+            message: '已跳过旧 Setup 向导',
             issue: createIssue(
               'normal-blocking',
               'S3',
-              'SETUP_REQUIRED',
-              'Setup 尚未完成',
-              '请先完成 Setup，选择工作区并配置 AI 服务。',
+              'LEGACY_SETUP_SKIPPED',
+              '旧 Setup 状态已自动兼容',
+              'UClaw 现在使用随盘工作台和公司密钥下发配置，不再要求普通用户选择工作区或手动配置 AI。',
             ),
-            actions: [{ id: 'select-workspace', label: '重新选择工作区', variant: 'secondary' }],
+            actions: [],
           };
         }
         return { message: 'Setup 已完成' };
@@ -745,17 +748,18 @@ export class StartupProgressService {
       delete process.env.UCLAW_WORKSPACE_DIR;
       return {
         status: 'warning',
-        message: '已重置不存在的工作区，需要重新完成 Setup',
+        message: '已忽略不可用的旧工作区路径',
         detail: resetWorkspaceDir,
         issue: createIssue(
           'external',
           'S3',
           resetReason === 'missing-workspace' ? 'WORKSPACE_NOT_FOUND' : 'WORKSPACE_REQUIRED',
           resetReason === 'missing-workspace' ? '工作区路径不存在' : '工作区需要重新确认',
-          '请重新选择一个可访问的工作区。移动盘跨系统使用时，请确认盘符、卷名或挂载路径没有变化。',
+          'UClaw 会优先使用随盘工作台或默认工作区继续启动。请确认数据目录可写；如果问题持续，请打开数据目录检查配置。',
         ),
         actions: [
-          { id: 'select-workspace', label: '重新选择工作区', variant: 'primary' },
+          { id: 'retry-current-step', label: '重试启动检查', variant: 'primary' },
+          { id: 'open-data-root', label: '打开数据目录' },
         ],
       };
     }
@@ -952,29 +956,13 @@ export class StartupProgressService {
         return { snapshot: await this.rerunStartup() };
       }
       case 'select-workspace': {
-        const result = await dialog.showOpenDialog({
-          title: '选择工作目录',
-          properties: ['openDirectory', 'createDirectory'],
-          buttonLabel: '选择此目录',
-        });
-        if (!result.canceled && result.filePaths[0]) {
-          const portableWorkspace = resolvePortableWorkspaceDir();
-          const dir = portableWorkspace?.resolved ?? result.filePaths[0];
-          await setSetting('workspaceDir', portableWorkspace?.stored ?? result.filePaths[0]);
-          process.env.UCLAW_WORKSPACE_DIR = dir;
-          await setSetting('setupComplete', false);
-          this.setOverall('blockedBySetup', '已选择新工作区，请完成 Setup。', {
-            issue: createIssue(
-              'normal-blocking',
-              'S3',
-              'WORKSPACE_SELECTED_SETUP_REQUIRED',
-              '已选择新工作区',
-              '请完成 Setup，让 UClaw 为新工作区准备运行配置。',
-            ),
-            actions: [{ id: 'open-workspace-folder', label: '打开工作区文件夹' }],
-          });
+        const portableWorkspace = resolvePortableWorkspaceDir();
+        if (portableWorkspace?.resolved) {
+          await setSetting('workspaceDir', portableWorkspace.stored);
+          process.env.UCLAW_WORKSPACE_DIR = portableWorkspace.resolved;
         }
-        return { snapshot: this.getSnapshot() };
+        await setSetting('setupComplete', true);
+        return { snapshot: await this.rerunStartup() };
       }
       case 'open-workspace-folder': {
         const workspaceDir = await getSetting('workspaceDir');

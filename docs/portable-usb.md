@@ -56,14 +56,14 @@ The app does not import the user's standalone `~/.openclaw` directory into this
 data root. In the fixed USB workbench layout, OpenClaw runtime files live under
 `<dataRoot>/workspace/.openclaw`; UClaw stores the workspace as the relative
 path `workspace`, so moving the drive between Windows machines with different
-drive letters does not reset Setup.
+drive letters does not reset the portable workbench or send users back to the legacy Setup flow.
 
 UClaw also does not auto-import old `Roaming\UClaw` or legacy Electron app data
 into a new data root. A new USB/zip data root starts clean, so it cannot
 silently inherit a workspace path from a previous installation on the computer.
 
 Bundled `uv` follows the application package. Windows release builds also bundle
-managed CPython 3.12 under the application resources, so first-run Setup should
+managed CPython 3.12 under the application resources, so first launch should
 not download CPython when using the official Windows `.zip` artifact. Runtime
 caches, tools, and fallback Python installs still live under
 `<dataRoot>/uclaw/runtime/uv`; they should not be installed into the computer's

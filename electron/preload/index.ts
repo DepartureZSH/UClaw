@@ -146,6 +146,8 @@ const electronAPI = {
         'app:getDataRoot',
         'app:getStorageDiagnostics',
         'app:getWorkspaceDir',
+        'app:getCompanyKey',
+        'app:setCompanyKey',
         'app:workspaceHasOpenClawConfig',
         'app:selectWorkspaceDir',
         'app:applyWorkspaceDir',

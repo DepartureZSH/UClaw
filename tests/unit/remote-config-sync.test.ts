@@ -8,6 +8,7 @@ const setDefaultProviderMock = vi.fn();
 const storeApiKeyMock = vi.fn();
 const applyInitialPluginConfigMock = vi.fn();
 const loggerWarnMock = vi.fn();
+const getSettingMock = vi.fn();
 
 let dataRoot = '';
 let portableConfig: unknown = null;
@@ -32,6 +33,10 @@ vi.mock('@electron/utils/logger', () => ({
     info: vi.fn(),
     warn: (...args: unknown[]) => loggerWarnMock(...args),
   },
+}));
+
+vi.mock('@electron/utils/store', () => ({
+  getSetting: (...args: unknown[]) => getSettingMock(...args),
 }));
 
 function makeConfig(version: string, apiKey = 'sk-test') {
@@ -68,6 +73,7 @@ describe('remote config sync', () => {
     };
     delete process.env.UCLAW_REMOTE_CONFIG_ENDPOINT;
     delete process.env.UCLAW_REMOTE_CONFIG_PACKAGE_ID;
+    getSettingMock.mockResolvedValue('');
     globalThis.fetch = vi.fn() as typeof fetch;
   });
 
@@ -89,6 +95,7 @@ describe('remote config sync', () => {
     expect(result).toMatchObject({ status: 'success', configVersion: 'v1', source: 'remote' });
     expect(fetch).toHaveBeenCalledWith('https://laf.example.test/uclaw/provision', expect.objectContaining({
       method: 'POST',
+      body: expect.stringContaining('"packageId":"usb-001"'),
     }));
     expect(saveProviderMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'new-api',
@@ -103,6 +110,22 @@ describe('remote config sync', () => {
       'https://new-api.example.test/v1',
       'kimi-k2.5',
     );
+  });
+
+  it('uses persisted company key before the bundled package id', async () => {
+    getSettingMock.mockImplementation(async (key: string) => key === 'companyKey' ? 'company-key-001' : '');
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => makeConfig('v2'),
+    } as Response);
+
+    const { syncRemoteConfig } = await import('@electron/main/remote-config-sync');
+    await syncRemoteConfig({ appVersion: '0.3.2', platform: 'win32' });
+
+    expect(fetch).toHaveBeenCalledWith('https://laf.example.test/uclaw/provision', expect.objectContaining({
+      body: expect.stringContaining('"packageId":"company-key-001"'),
+    }));
   });
 
   it('applies cached config when remote fetch fails', async () => {

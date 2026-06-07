@@ -191,9 +191,7 @@ export const test = base.extend<ElectronFixtures>({
 });
 
 export async function completeSetup(page: Page): Promise<void> {
-  await expect(page.getByTestId('setup-page')).toBeVisible();
-  await page.getByTestId('setup-skip-button').click();
-  await expect(page.getByTestId('main-layout')).toBeVisible();
+  await expect(page.getByTestId('main-layout')).toBeVisible({ timeout: 30_000 });
 }
 
 export { closeElectronApp };

@@ -138,10 +138,10 @@ describe('StartupProgressService', () => {
     expect(gatewayManager.start).not.toHaveBeenCalled();
   });
 
-  it('blocks on setup without starting gateway', async () => {
+  it('skips legacy setup state without starting gateway when auto-start is disabled', async () => {
     getSettingMock.mockImplementation(async (key: string) => {
       if (key === 'setupComplete') return false;
-      if (key === 'gatewayAutoStart') return true;
+      if (key === 'gatewayAutoStart') return false;
       return '';
     });
     resolveStartupWorkspaceStateMock.mockResolvedValue({ setupComplete: false, workspaceDir: '' });
@@ -157,9 +157,9 @@ describe('StartupProgressService', () => {
       storageDiagnostics: { isAppTranslocated: false },
     });
 
-    expect(snapshot.status).toBe('blockedBySetup');
-    expect(snapshot.issue).toMatchObject({ type: 'normal-blocking', severity: 'S3', code: 'SETUP_REQUIRED' });
-    expect(snapshot.steps.find((step) => step.id === 'setup-check')?.status).toBe('skipped');
+    expect(snapshot.status).toBe('ready');
+    expect(setSettingMock).toHaveBeenCalledWith('setupComplete', true);
+    expect(snapshot.steps.find((step) => step.id === 'setup-check')?.status).toBe('success');
     expect(snapshot.steps.find((step) => step.id === 'gateway-start')?.status).toBe('skipped');
     expect(snapshot.steps.find((step) => step.id === 'remote-config-sync')?.status).toBe('skipped');
     expect(gatewayManager.start).not.toHaveBeenCalled();

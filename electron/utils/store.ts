@@ -51,6 +51,7 @@ export interface AppSettings {
 
   // Workspace
   workspaceDir: string;
+  companyKey: string;
 
   // Setup
   setupComplete: boolean;
@@ -109,6 +110,7 @@ function createDefaultSettings(): AppSettings {
 
     // Workspace
     workspaceDir: '',
+    companyKey: '',
 
     // Setup
     setupComplete: false,

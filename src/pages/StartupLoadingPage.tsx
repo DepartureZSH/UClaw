@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -62,6 +63,7 @@ function issueTone(severity?: string): string {
 }
 
 export function StartupLoadingPage({ snapshot }: { snapshot: StartupSnapshot | null }) {
+  const navigate = useNavigate();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const runAction = useStartupStore((state) => state.runAction);
@@ -87,6 +89,10 @@ export function StartupLoadingPage({ snapshot }: { snapshot: StartupSnapshot | n
   };
 
   const handleAction = async (action: StartupAction) => {
+    if (action.id === 'enter-company-key') {
+      navigate('/company-key');
+      return;
+    }
     const result = await runAction({ id: action.id, payload: action.payload });
     if (result?.copyText) {
       await navigator.clipboard.writeText(result.copyText);

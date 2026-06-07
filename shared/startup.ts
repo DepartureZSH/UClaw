@@ -43,6 +43,7 @@ export type StartupActionId =
   | 'resync-token'
   | 'switch-provider'
   | 'rescan-provider-config'
+  | 'enter-company-key'
   | 'select-workspace'
   | 'open-workspace-folder'
   | 'open-data-root'

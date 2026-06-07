@@ -9,6 +9,7 @@ import {
   type PortableProvisioningConfig,
 } from '../utils/data-root';
 import { logger } from '../utils/logger';
+import { getSetting } from '../utils/store';
 
 const REMOTE_CONFIG_ENDPOINT_ENV = 'UCLAW_REMOTE_CONFIG_ENDPOINT';
 const REMOTE_CONFIG_PACKAGE_ID_ENV = 'UCLAW_REMOTE_CONFIG_PACKAGE_ID';
@@ -49,11 +50,12 @@ function normalizeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function resolveProvisioningConfig(): PortableProvisioningConfig {
+async function resolveProvisioningConfig(): Promise<PortableProvisioningConfig> {
   const markerProvisioning = getConfiguredPortableDataRootConfig()?.provisioning ?? {};
+  const companyKey = await getSetting('companyKey').catch(() => '');
   return {
     endpoint: normalizeString(process.env[REMOTE_CONFIG_ENDPOINT_ENV]) || markerProvisioning.endpoint,
-    packageId: normalizeString(process.env[REMOTE_CONFIG_PACKAGE_ID_ENV]) || markerProvisioning.packageId,
+    packageId: normalizeString(process.env[REMOTE_CONFIG_PACKAGE_ID_ENV]) || normalizeString(companyKey) || markerProvisioning.packageId,
     publicKeyId: normalizeString(process.env[REMOTE_CONFIG_PUBLIC_KEY_ID_ENV]) || markerProvisioning.publicKeyId,
   };
 }
@@ -176,7 +178,7 @@ export async function syncRemoteConfig(options: {
   appVersion: string;
   platform?: NodeJS.Platform;
 }): Promise<RemoteConfigSyncResult> {
-  const provisioning = resolveProvisioningConfig();
+  const provisioning = await resolveProvisioningConfig();
   if (!provisioning.endpoint || !provisioning.packageId) {
     return { status: 'skipped', message: '未配置远程配置下发，跳过' };
   }
