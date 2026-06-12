@@ -167,8 +167,43 @@ describe('data root', () => {
     });
 
     expect(resolved.source).toBe('portable-marker');
-    expect(resolved.dataRoot).toBe(resolve(appParent, 'data'));
+    expect(resolved.dataRoot).toBe(resolve('/Users/me/Library/Application Support'));
     expect(resolved.portable?.provisioning?.publicKeyId).toBe('laf-key-1');
+  });
+
+  it('keeps provisioning metadata but avoids App Translocation data roots on macOS', async () => {
+    const translocatedRoot = await makeTempDir('uclaw-AppTranslocation-');
+    const appParent = join(translocatedRoot, 'T', 'AppTranslocation', 'ABCDEF', 'd');
+    const appBundle = join(appParent, 'UClaw.app');
+    const exePath = join(appBundle, 'Contents', 'MacOS', 'UClaw');
+    await mkdir(dirname(exePath), { recursive: true });
+    await writeFile(join(appParent, 'uclaw-portable.json'), `${JSON.stringify({
+      schema: 'uclaw-portable-data-root',
+      version: 2,
+      dataRoot: 'data',
+      workspaceMode: 'portable-workbench',
+      workspaceDir: 'workspace',
+      provisioning: {
+        endpoint: 'https://laf.example.test/uclaw/provision',
+        publicKeyId: 'laf-key-1',
+      },
+    })}\n`, 'utf8');
+
+    const resolved = resolveDataRoot({
+      argv: [exePath],
+      defaultUserDataDir: '/Users/me/Library/Application Support/UClaw',
+      exePath,
+    });
+
+    expect(resolved.source).toBe('portable-marker');
+    expect(resolved.dataRoot).toBe(resolve('/Users/me/Library/Application Support'));
+    expect(resolved.portable).toMatchObject({
+      workspaceMode: 'portable-workbench',
+      workspaceDir: 'workspace',
+      provisioning: {
+        endpoint: 'https://laf.example.test/uclaw/provision',
+      },
+    });
   });
 
   it('lets explicit startup arguments override the portable marker', async () => {

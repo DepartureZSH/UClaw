@@ -17,6 +17,7 @@ export const DATA_ROOT_ENV = 'UCLAW_DATA_ROOT';
 export const DATA_ROOT_SOURCE_ENV = 'UCLAW_DATA_ROOT_SOURCE';
 export const DATA_ROOT_ARG = '--uclaw-data-root';
 export const PORTABLE_DATA_ROOT_MARKER = 'uclaw-portable.json';
+const APP_TRANSLOCATION_SEGMENT = '/AppTranslocation/';
 
 type ElectronAppLike = Pick<typeof import('electron').app, 'getPath' | 'setPath'>;
 
@@ -199,6 +200,18 @@ function normalizeRootPath(value: string, exePath: string): string {
     : resolve(dirname(exePath), trimmed);
 }
 
+function normalizePathForDetection(pathValue: string): string {
+  return pathValue.replace(/\\/g, '/');
+}
+
+function isAppTranslocatedPath(pathValue: string): boolean {
+  return normalizePathForDetection(pathValue).includes(APP_TRANSLOCATION_SEGMENT);
+}
+
+function isBundledMacResourceMarker(markerPath: string): boolean {
+  return normalizePathForDetection(markerPath).endsWith(`.app/Contents/Resources/${PORTABLE_DATA_ROOT_MARKER}`);
+}
+
 function readDataRootArg(argv: string[] = process.argv): string | null {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -291,13 +304,20 @@ function getPortableMarkerCandidates(exePath: string): string[] {
   return Array.from(new Set(candidates));
 }
 
-function readPortableMarker(exePath: string): { root: string; config: PortableDataRootConfig } | null {
+function readPortableMarker(
+  exePath: string,
+  defaultDataRoot: string,
+): { root: string; config: PortableDataRootConfig } | null {
   const markerPath = getPortableMarkerCandidates(exePath).find((candidate) => existsSync(candidate));
   if (!markerPath) return null;
 
   try {
     const config = normalizePortableMarker(JSON.parse(readFileSync(markerPath, 'utf8')));
-    return { root: normalizeRootPath(config.dataRoot, markerPath), config };
+    const markerRoot = normalizeRootPath(config.dataRoot, markerPath);
+    const shouldUseDefaultRoot = isAppTranslocatedPath(markerPath)
+      || isAppTranslocatedPath(markerRoot)
+      || isBundledMacResourceMarker(markerPath);
+    return { root: shouldUseDefaultRoot ? defaultDataRoot : markerRoot, config };
   } catch (error) {
     throw new Error(`portable data root marker is invalid: ${markerPath}`, { cause: error });
   }
@@ -307,12 +327,13 @@ export function resolveDataRoot(options: ResolveDataRootOptions): DataRootResolu
   const argRoot = readDataRootArg(options.argv);
   const envRoot = process.env[DATA_ROOT_ENV]?.trim() || null;
   const configuredRoot = argRoot ?? envRoot;
+  const defaultDataRoot = resolve(dirname(options.defaultUserDataDir));
   const portableMarker = configuredRoot === null
-    ? readPortableMarker(options.exePath)
+    ? readPortableMarker(options.exePath, defaultDataRoot)
     : null;
   const dataRoot = configuredRoot !== null
     ? normalizeRootPath(configuredRoot, options.exePath)
-    : (portableMarker?.root ?? resolve(dirname(options.defaultUserDataDir)));
+    : (portableMarker?.root ?? defaultDataRoot);
 
   return {
     dataRoot,
