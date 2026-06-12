@@ -608,7 +608,7 @@ export class StartupProgressService {
             throw context.startupError;
           }
           return context.storageDiagnostics.isAppTranslocated
-            ? '检测到 macOS App Translocation'
+            ? '检测到 macOS App Translocation，继续启动'
             : '应用初始化完成';
         })(),
       }));
@@ -620,24 +620,6 @@ export class StartupProgressService {
       });
 
       await this.runStep('workspace-resolve', '正在解析工作区', async () => await this.resolveWorkspace(context));
-
-      if (context.storageDiagnostics.isAppTranslocated) {
-        this.skipRemaining('setup-check', '已阻塞：macOS App Translocation');
-        this.setOverall('error', '检测到 macOS App Translocation，已阻止启动以避免写入错误位置。', {
-          issue: createIssue(
-            'external',
-            'S0',
-            'MACOS_APP_TRANSLOCATION',
-            'macOS App Translocation',
-            '请把 UClaw 移到固定位置后重新打开，必要时清理 quarantine 属性。数据目录可以放在移动盘，但 macOS app 不建议直接放在 ExFAT 上运行。',
-          ),
-          actions: [
-            { id: 'copy-diagnostics', label: '复制诊断信息' },
-            { id: 'quit-app', label: '退出应用', variant: 'danger' },
-          ],
-        });
-        return this.getSnapshot();
-      }
 
       const setupResult = await this.runStep('setup-check', '正在检查 Setup 状态', async () => {
         const setupComplete = context.isE2EMode && process.env.UCLAW_E2E_SKIP_SETUP === '1'
@@ -754,8 +736,8 @@ export class StartupProgressService {
   }
 
   private async resolveWorkspace(context: StartupContext): Promise<StepRunResult> {
-    if (context.isE2EMode || context.storageDiagnostics.isAppTranslocated) {
-      return { message: context.isE2EMode ? 'E2E 模式跳过工作区副作用' : 'App Translocation 阻止工作区解析' };
+    if (context.isE2EMode) {
+      return { message: 'E2E 模式跳过工作区副作用' };
     }
 
     const { setupComplete, workspaceDir, resetReason, resetWorkspaceDir } = await resolveStartupWorkspaceState();

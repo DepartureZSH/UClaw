@@ -192,6 +192,26 @@ describe('StartupProgressService', () => {
     expect(gatewayManager.start).not.toHaveBeenCalled();
   });
 
+  it('continues startup when macOS App Translocation is detected', async () => {
+    const { StartupProgressService } = await import('@electron/main/startup-progress-service');
+    const gatewayManager = new FakeGatewayManager();
+    const service = new StartupProgressService({
+      gatewayManager: gatewayManager as never,
+      getMainWindow: () => null,
+    });
+
+    const snapshot = await service.runInitialStartup({
+      isE2EMode: false,
+      storageDiagnostics: { isAppTranslocated: true },
+    });
+
+    expect(snapshot.status).toBe('ready');
+    expect(snapshot.steps.find((step) => step.id === 'app-init')?.status).toBe('success');
+    expect(snapshot.steps.find((step) => step.id === 'workspace-resolve')?.status).toBe('success');
+    expect(snapshot.issue?.code).not.toBe('MACOS_APP_TRANSLOCATION');
+    expect(gatewayManager.start).not.toHaveBeenCalled();
+  });
+
   it('runs remote config sync before provider key sync', async () => {
     getSettingMock.mockImplementation(async (key: string) => {
       if (key === 'setupComplete') return true;

@@ -196,5 +196,8 @@ On macOS/Linux, use absolute paths for the mounted volumes.
 
 ## App Translocation
 
-If macOS launches UClaw from an `AppTranslocation` path, UClaw shows a blocking
-repair page. See `docs/macos-external-app-troubleshooting.md` for cleanup steps.
+If macOS launches UClaw from an `AppTranslocation` path, UClaw records the
+condition in storage diagnostics but continues startup. Production package
+makers should still clear quarantine and place the `.app` in a stable location
+before handoff. See `docs/macos-external-app-troubleshooting.md` for cleanup
+steps.

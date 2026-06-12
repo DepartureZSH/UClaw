@@ -354,10 +354,10 @@ async function initialize(): Promise<void> {
     providerStorePath: join(dataRootResolution.uclawDir, 'uclaw-providers.json'),
   });
   if (storageDiagnostics.isAppTranslocated) {
-    logger.warn(`[storage] AppTranslocation detected at ${storageDiagnostics.exePath}; startup side effects will be skipped.`);
+    logger.warn(`[storage] AppTranslocation detected at ${storageDiagnostics.exePath}; continuing startup.`);
   }
 
-  if (!earlyStartupError && !isE2EMode && !storageDiagnostics.isAppTranslocated) {
+  if (!earlyStartupError && !isE2EMode) {
     // Warm up network optimization (non-blocking)
     void warmupNetworkOptimization();
 
@@ -367,8 +367,6 @@ async function initialize(): Promise<void> {
     // Apply persisted proxy settings before creating windows or network requests.
     await applyProxySettings();
     await syncLaunchAtStartupSettingFromStore();
-  } else if (storageDiagnostics.isAppTranslocated) {
-    logger.warn('Startup side effects minimized because macOS AppTranslocation is active');
   } else {
     logger.info('Running in E2E mode: startup side effects minimized');
   }
@@ -380,7 +378,7 @@ async function initialize(): Promise<void> {
   const window = createMainWindow();
 
   // Create system tray
-  if (!earlyStartupError && !isE2EMode && !storageDiagnostics.isAppTranslocated) {
+  if (!earlyStartupError && !isE2EMode) {
     createTray(window);
   }
 
@@ -417,12 +415,6 @@ async function initialize(): Promise<void> {
     return;
   }
 
-  if (storageDiagnostics.isAppTranslocated) {
-    await startupProgressService.runInitialStartup({ isE2EMode, storageDiagnostics });
-    logger.warn('Initialization stopped before Host API, extensions, and Gateway startup because macOS AppTranslocation is active');
-    return;
-  }
-
   hostApiServer = startHostApiServer({
     gatewayManager,
     clawHubService,
@@ -452,7 +444,7 @@ async function initialize(): Promise<void> {
   // Repair any bootstrap files that only contain UClaw markers (no OpenClaw
   // template content). This fixes a race condition where ensureUClawContext()
   // previously created the file before the gateway could seed the full template.
-  if (!isE2EMode && !storageDiagnostics.isAppTranslocated) {
+  if (!isE2EMode) {
     void repairUClawOnlyBootstrapFiles().catch((error) => {
       logger.warn('Failed to repair bootstrap files:', error);
     });
@@ -460,7 +452,7 @@ async function initialize(): Promise<void> {
 
   // Pre-deploy built-in skills (feishu-doc, feishu-drive, feishu-perm, feishu-wiki)
   // to ~/.openclaw/skills/ so they are immediately available without manual install.
-  if (!isE2EMode && !storageDiagnostics.isAppTranslocated) {
+  if (!isE2EMode) {
     void ensureBuiltinSkillsInstalled().catch((error) => {
       logger.warn('Failed to install built-in skills:', error);
     });
@@ -469,7 +461,7 @@ async function initialize(): Promise<void> {
   // Pre-deploy bundled third-party skills from resources/preinstalled-skills.
   // This installs full skill directories (not only SKILL.md) in an idempotent,
   // non-destructive way and never blocks startup.
-  if (!isE2EMode && !storageDiagnostics.isAppTranslocated) {
+  if (!isE2EMode) {
     void ensurePreinstalledSkillsInstalled().catch((error) => {
       logger.warn('Failed to install preinstalled skills:', error);
     });
@@ -479,7 +471,7 @@ async function initialize(): Promise<void> {
   // renderer subscribers observe the full startup lifecycle.
   gatewayManager.on('status', (status: { state: string }) => {
     hostEventBus.emit('gateway:status', status);
-    if (status.state === 'running' && !isE2EMode && !storageDiagnostics.isAppTranslocated) {
+    if (status.state === 'running' && !isE2EMode) {
       void ensureUClawContext().catch((error) => {
         logger.warn('Failed to re-merge UClaw context after gateway reconnect:', error);
       });
@@ -556,14 +548,14 @@ async function initialize(): Promise<void> {
   // The gateway seeds workspace files asynchronously after its HTTP server
   // is ready, so ensureUClawContext will retry until the target files appear.
   const startupStatus = startupProgressService.getSnapshot().status;
-  if (!isE2EMode && !storageDiagnostics.isAppTranslocated && (startupStatus === 'ready' || startupStatus === 'warning')) {
+  if (!isE2EMode && (startupStatus === 'ready' || startupStatus === 'warning')) {
     void ensureUClawContext().catch((error) => {
       logger.warn('Failed to merge UClaw context into workspace:', error);
     });
   }
 
   // Auto-install openclaw CLI and shell completions (non-blocking).
-  if (!isE2EMode && !storageDiagnostics.isAppTranslocated) {
+  if (!isE2EMode) {
     void autoInstallCliIfNeeded((installedPath) => {
       mainWindow?.webContents.send('openclaw:cli-installed', installedPath);
     }).then(() => {

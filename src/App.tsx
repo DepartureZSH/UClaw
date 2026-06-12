@@ -28,23 +28,6 @@ import { classifyRendererError, stringifyRepairError } from './lib/error-repair'
 import { rendererExtensionRegistry } from './extensions/registry';
 import { loadExternalRendererExtensions } from './extensions/_ext-bridge.generated';
 
-type StorageDiagnostics = {
-  platform: string;
-  dataRoot: string;
-  uclawDir: string;
-  openclawDir: string;
-  workspaceDir: string | null;
-  settingsPath: string;
-  providerStorePath: string;
-  exePath: string;
-  appPath: string;
-  isAppTranslocated: boolean;
-  appBundlePath: string | null;
-  recommendedLaunchCommand: string | null;
-  translocationFixCommands: string[];
-};
-
-
 /**
  * Error Boundary to catch and display React rendering errors
  */
@@ -87,7 +70,6 @@ class ErrorBoundary extends Component<
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [storageDiagnostics, setStorageDiagnostics] = useState<StorageDiagnostics | null>(null);
   const [storageDiagnosticsLoaded, setStorageDiagnosticsLoaded] = useState(false);
   const [globalError, setGlobalError] = useState<{ error: unknown; detail?: string } | null>(null);
   const initSettings = useSettingsStore((state) => state.init);
@@ -108,13 +90,8 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    invokeIpc<StorageDiagnostics>('app:getStorageDiagnostics')
-      .then((diagnostics) => {
-        if (!cancelled) setStorageDiagnostics(diagnostics);
-      })
-      .catch(() => {
-        if (!cancelled) setStorageDiagnostics(null);
-      })
+    invokeIpc('app:getStorageDiagnostics')
+      .catch(() => {})
       .finally(() => {
         if (!cancelled) setStorageDiagnosticsLoaded(true);
       });
@@ -130,17 +107,17 @@ function App() {
 
   // Initialize Gateway connection on mount
   useEffect(() => {
-    if (!storageDiagnosticsLoaded || storageDiagnostics?.isAppTranslocated) return;
+    if (!storageDiagnosticsLoaded) return;
     if (startupSnapshot?.status !== 'ready') return;
     initGateway();
-  }, [initGateway, storageDiagnosticsLoaded, storageDiagnostics?.isAppTranslocated, startupSnapshot?.status]);
+  }, [initGateway, storageDiagnosticsLoaded, startupSnapshot?.status]);
 
   // Initialize provider snapshot on mount
   useEffect(() => {
-    if (!storageDiagnosticsLoaded || storageDiagnostics?.isAppTranslocated) return;
+    if (!storageDiagnosticsLoaded) return;
     if (startupSnapshot?.status !== 'ready') return;
     initProviders();
-  }, [initProviders, storageDiagnosticsLoaded, storageDiagnostics?.isAppTranslocated, startupSnapshot?.status]);
+  }, [initProviders, storageDiagnosticsLoaded, startupSnapshot?.status]);
 
   // Listen for navigation events from main process
   useEffect(() => {
@@ -220,40 +197,6 @@ function App() {
         />
         <Toaster position="bottom-right" richColors closeButton style={{ zIndex: 99999 }} />
       </TooltipProvider>
-    );
-  }
-
-  if (storageDiagnostics?.isAppTranslocated) {
-    return (
-      <ErrorBoundary>
-        <TooltipProvider delayDuration={300}>
-          <ErrorRepairPage
-            title="UClaw 启动已阻止"
-            message="检测到 macOS App Translocation。为避免写入错误位置，UClaw 已停止继续启动。"
-            issue={{
-              type: 'external',
-              severity: 'S0',
-              code: 'MACOS_APP_TRANSLOCATION',
-              title: 'macOS App Translocation',
-              suggestion: '请把 UClaw 移到固定位置后重新打开，必要时清理 quarantine 属性。数据目录可以放在移动盘，但 macOS app 不建议直接放在 ExFAT 上运行。',
-            }}
-            actions={[
-              { id: 'copy-diagnostics', label: '复制修复命令', variant: 'primary' },
-              { id: 'relaunch-app', label: '重启 UClaw' },
-              { id: 'quit-app', label: '退出应用', variant: 'danger' },
-            ]}
-            detail={[
-              `exePath: ${storageDiagnostics.exePath}`,
-              `appPath: ${storageDiagnostics.appPath}`,
-              `dataRoot: ${storageDiagnostics.dataRoot}`,
-              `recommendedLaunchCommand: ${storageDiagnostics.recommendedLaunchCommand ?? '-'}`,
-              'fixCommands:',
-              storageDiagnostics.translocationFixCommands.join('\n'),
-            ].join('\n')}
-          />
-          <Toaster position="bottom-right" richColors closeButton style={{ zIndex: 99999 }} />
-        </TooltipProvider>
-      </ErrorBoundary>
     );
   }
 
