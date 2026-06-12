@@ -150,7 +150,7 @@ Startup loading and Gateway startup timings are centralized in `electron/utils/s
 
 #### Pre-built Releases (Recommended)
 
-Download the latest release for your platform from the [Releases](https://github.com/DepartureZSH/UClaw/releases) page.
+Download the latest ZIP release for your platform from the [Releases](https://github.com/DepartureZSH/UClaw/releases) page. GitHub Releases publish ZIP packages and their `.blockmap` files only.
 
 #### Build from Source
 
@@ -169,7 +169,7 @@ pnpm dev
 
 Current commercial ZIP builds start directly with the in-window startup page. The old first-run Setup Wizard is no longer part of the normal user flow.
 
-- Windows ZIP builds use the portable workbench beside the app: `data/` for UClaw data and `data/workspace` for OpenClaw runtime files.
+- ZIP builds use the portable workbench beside the app: `data/` for UClaw data and `data/workspace` for OpenClaw runtime files.
 - AI and web-search settings are synchronized from the managed company configuration service.
 - If the package credential is missing or expired, UClaw shows a **Company Key** page. End users only enter the company key provided by operations; they do not choose a workspace or manually enter API endpoints/API keys.
 

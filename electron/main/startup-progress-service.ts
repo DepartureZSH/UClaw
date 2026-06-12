@@ -667,6 +667,26 @@ export class StartupProgressService {
       });
 
       if (remoteConfigResult?.status === 'skipped') {
+        if (remoteConfigResult.detail === 'REMOTE_CONFIG_ENDPOINT_MISSING') {
+          this.skipRemaining('provider-key-sync', '等待完整发布包');
+          this.setOverall('error', remoteConfigResult.message, {
+            issue: createIssue(
+              'internal',
+              'S1',
+              'REMOTE_CONFIG_ENDPOINT_MISSING',
+              '发布包缺少配置下发端点',
+              '请重新下载最新的 UClaw macOS ZIP 包，或确认 uclaw-portable.json 与应用一起保留。',
+            ),
+            actions: [
+              { id: 'copy-diagnostics', label: '复制诊断信息', variant: 'primary' },
+              { id: 'open-log-folder', label: '打开日志目录' },
+              { id: 'quit-app', label: '退出应用', variant: 'danger' },
+            ],
+            currentStep: 'remote-config-sync',
+          });
+          return this.getSnapshot();
+        }
+
         this.skipRemaining('provider-key-sync', '等待公司密钥');
         this.setOverall('blockedBySetup', '请先填写公司密钥，以同步 AI 和联网搜索配置。', {
           issue: createIssue(

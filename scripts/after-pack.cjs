@@ -525,6 +525,30 @@ function bundlePlugin(nodeModulesRoot, npmName, destDir) {
   return true;
 }
 
+function createPortableDataRootMarker(dataRoot) {
+  const provisioning = {
+    endpoint: process.env.UCLAW_PORTABLE_PROVISIONING_ENDPOINT || 'https://tbop954d65.sealosbja.site/uclaw/provision',
+    publicKeyId: process.env.UCLAW_PORTABLE_PUBLIC_KEY_ID || 'sealaf-bja-uclaw-v1',
+  };
+  if (process.env.UCLAW_PORTABLE_PACKAGE_ID) {
+    provisioning.packageId = process.env.UCLAW_PORTABLE_PACKAGE_ID;
+  }
+
+  return {
+    schema: 'uclaw-portable-data-root',
+    version: 2,
+    dataRoot,
+    workspaceMode: 'portable-workbench',
+    workspaceDir: 'workspace',
+    provisioning,
+  };
+}
+
+function writePortableDataRootMarker(markerPath, dataRoot) {
+  mkdirSync(dirname(markerPath), { recursive: true });
+  writeFileSync(markerPath, `${JSON.stringify(createPortableDataRootMarker(dataRoot), null, 2)}\n`, 'utf8');
+}
+
 // ── Main hook ────────────────────────────────────────────────────────────────
 
 exports.default = async function afterPack(context) {
@@ -751,7 +775,21 @@ exports.default = async function afterPack(context) {
       console.log(`[after-pack] 🩹 Patched ${asarLruCount} lru-cache instance(s) in app.asar.unpacked`);
     }
   }
-  // 6. [Windows only] Patch NSIS uninstaller filename.
+  // 6. Write portable workbench marker for packaged ZIP-style builds.
+  //
+  // The marker intentionally contains only public provisioning metadata. The
+  // per-company package credential is entered by the operator and cached in the
+  // data root, not baked into public release artifacts.
+  const portableMarkerPath = join(appOutDir, 'uclaw-portable.json');
+  writePortableDataRootMarker(portableMarkerPath, 'data');
+  console.log(`[after-pack] ✅ Wrote portable data-root marker: ${portableMarkerPath}`);
+  if (platform === 'darwin') {
+    const macResourceMarkerPath = join(resourcesDir, 'uclaw-portable.json');
+    writePortableDataRootMarker(macResourceMarkerPath, '../../../data');
+    console.log(`[after-pack] ✅ Wrote macOS bundled portable data-root marker: ${macResourceMarkerPath}`);
+  }
+
+  // 7. [Windows only] Patch NSIS uninstaller filename.
   //
   // Do NOT patch extractAppPackage.nsh to extract directly to $INSTDIR. Direct
   // Nsis7z extraction proved unreliable on exFAT USB drives with the very large
@@ -759,24 +797,6 @@ exports.default = async function afterPack(context) {
   // 1-byte package.json files. Keep electron-builder's default temp extraction
   // + CopyFiles path for NSIS, and provide a Windows zip target for USB use.
   if (platform === 'win32') {
-    const portableMarkerPath = join(appOutDir, 'uclaw-portable.json');
-    const provisioning = {
-      endpoint: process.env.UCLAW_PORTABLE_PROVISIONING_ENDPOINT || 'https://tbop954d65.sealosbja.site/uclaw/provision',
-      publicKeyId: process.env.UCLAW_PORTABLE_PUBLIC_KEY_ID || 'sealaf-bja-uclaw-v1',
-    };
-    if (process.env.UCLAW_PORTABLE_PACKAGE_ID) {
-      provisioning.packageId = process.env.UCLAW_PORTABLE_PACKAGE_ID;
-    }
-    writeFileSync(portableMarkerPath, `${JSON.stringify({
-      schema: 'uclaw-portable-data-root',
-      version: 2,
-      dataRoot: 'data',
-      workspaceMode: 'portable-workbench',
-      workspaceDir: 'workspace',
-      provisioning,
-    }, null, 2)}\n`, 'utf8');
-    console.log(`[after-pack] ✅ Wrote Windows zip portable data-root marker: ${portableMarkerPath}`);
-
     const commonNsh = join(
       __dirname, '..', 'node_modules', 'app-builder-lib',
       'templates', 'nsis', 'common.nsh'

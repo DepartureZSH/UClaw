@@ -74,10 +74,6 @@ mac:
   category: public.app-category.productivity
   icon: resources/icons/icon.icns
   target:
-    - target: dmg
-      arch:
-        - x64
-        - arm64
     - target: zip
       arch:
         - x64
@@ -92,26 +88,6 @@ mac:
     NSMicrophoneUsageDescription: UClaw requires microphone access for voice features
     NSCameraUsageDescription: UClaw requires camera access for video features
 
-dmg:
-  # Explicit volume size prevents dmg-builder@1.2.0 auto-calculation from
-  # underestimating (causes "No space left on device" for large app bundles).
-  # The final .dmg is bzip2-compressed, so this only affects the temp volume.
-  size: 2g
-  background: resources/dmg-background.png
-  icon: resources/icons/icon.icns
-  iconSize: 100
-  window:
-    width: 540
-    height: 380
-  contents:
-    - type: file
-      x: 130
-      y: 220
-    - type: link
-      path: /Applications
-      x: 410
-      y: 220
-
 # Windows Configuration
 win:
   # Skip update signature verification: we ship via OSS + GitHub without a
@@ -124,28 +100,8 @@ win:
       to: cli/
   icon: resources/icons/icon.ico
   target:
-    - target: nsis
-      arch: x64
     - target: zip
       arch: x64
-
-nsis:
-  oneClick: false
-  perMachine: false
-  warningsAsErrors: false
-  allowToChangeInstallationDirectory: true
-  deleteAppDataOnUninstall: false
-  differentialPackage: true
-  createDesktopShortcut: true
-  createStartMenuShortcut: true
-  shortcutName: UClaw
-  uninstallDisplayName: UClaw
-  license: LICENSE
-  include: scripts/installer.nsh
-  installerIcon: resources/icons/icon.ico
-  # Do not emit a standalone $INSTDIR\uninstallerIcon.ico. On removable or
-  # aggressively scanned drives this file can be locked by the old install and
-  # make NSIS abort before the new app is copied.
 
 # Linux Configuration
 linux:
@@ -156,17 +112,6 @@ linux:
       to: cli/
   icon: resources/icons
   target:
-    - target: AppImage
-      arch:
-        - x64
-        - arm64
-    - target: deb
-      arch:
-        - x64
-        - arm64
-    - target: rpm
-      arch:
-        - x64
     - target: zip
       arch:
         - x64
@@ -183,21 +128,3 @@ linux:
       Categories: Utility;Network;
       Keywords: ai;assistant;automation;chat;
       StartupWMClass: uclaw
-
-appImage:
-  license: LICENSE
-
-deb:
-  depends:
-    # Use OR syntax to support both Ubuntu 22.04 and Ubuntu 24.04 (t64 transition).
-    # Ubuntu 24.04 renamed many libraries with a t64 suffix (64-bit time_t ABI transition).
-    - libgtk-3-0 | libgtk-3-0t64
-    - libnotify4 | libnotify4t64
-    - libnss3
-    - libxss1 | libxss1t64
-    - libxtst6 | libxtst6t64
-    - xdg-utils
-    - libatspi2.0-0 | libatspi2.0-0t64
-    - libuuid1
-  afterInstall: scripts/linux/after-install.sh
-  afterRemove: scripts/linux/after-remove.sh

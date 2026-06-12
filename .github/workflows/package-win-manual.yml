@@ -54,20 +54,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm run package:win
 
-      - name: Upload Windows Installer (x64)
+      - name: Upload Windows ZIP (x64)
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer-x64
-          path: release/*-win-x64.exe
+          name: windows-zip-x64
+          path: release/*-win-x64.zip
           if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload Windows Installer (arm64)
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-installer-arm64
-          path: release/*-win-arm64.exe
-          if-no-files-found: warn
           retention-days: 7
 
       - name: Upload Windows Blockmap Files
@@ -75,15 +67,5 @@ jobs:
         with:
           name: windows-blockmap
           path: release/*.blockmap
-          if-no-files-found: warn
-          retention-days: 7
-
-      - name: Upload Windows Update Manifests
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-update-manifests
-          path: |
-            release/*.yml
-            !release/builder-debug.yml
           if-no-files-found: warn
           retention-days: 7

@@ -121,10 +121,9 @@ The launcher starts the Windows executable and passes the shared data root:
 windows\UClaw.exe --uclaw-data-root "%SCRIPT_DIR%data"
 ```
 
-The GitHub Windows `.zip` artifact also contains `uclaw-portable.json`. If a
-user extracts that zip and double-clicks `UClaw.exe` directly, UClaw uses
-`.\data` beside the executable as its data root and keeps the OpenClaw workspace
-at `.\data\workspace`.
+GitHub `.zip` artifacts contain `uclaw-portable.json`. If a user extracts a ZIP
+and launches UClaw directly, UClaw uses `data/` beside the extracted app as its
+data root and keeps the OpenClaw workspace at `data/workspace`.
 
 The packaged marker is v2. Public GitHub zip artifacts include only portable
 layout metadata and the public provisioning endpoint. They must not include a
@@ -158,11 +157,8 @@ Build-time overrides are available when producing private packages:
 UCLAW_PORTABLE_PROVISIONING_ENDPOINT=https://example.com/uclaw/provision \
 UCLAW_PORTABLE_PACKAGE_ID=customer-a-usb \
 UCLAW_PORTABLE_PUBLIC_KEY_ID=customer-a-v1 \
-pnpm run package:win:portable
+pnpm run package:portable:dual
 ```
-
-The NSIS installer removes this marker after installation, so installed builds
-keep using the normal system data location.
 
 ## Linux launch
 

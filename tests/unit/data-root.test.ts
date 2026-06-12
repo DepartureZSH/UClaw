@@ -113,6 +113,64 @@ describe('data root', () => {
     });
   });
 
+  it('uses a portable marker next to the macOS app bundle', async () => {
+    const appParent = await makeTempDir('uclaw-macos-app-parent-');
+    const appBundle = join(appParent, 'UClaw.app');
+    const exePath = join(appBundle, 'Contents', 'MacOS', 'UClaw');
+    await mkdir(dirname(exePath), { recursive: true });
+    await writeFile(join(appParent, 'uclaw-portable.json'), `${JSON.stringify({
+      schema: 'uclaw-portable-data-root',
+      version: 2,
+      dataRoot: 'data',
+      workspaceMode: 'portable-workbench',
+      workspaceDir: 'workspace',
+      provisioning: {
+        endpoint: 'https://laf.example.test/uclaw/provision',
+        publicKeyId: 'laf-key-1',
+      },
+    })}\n`, 'utf8');
+
+    const resolved = resolveDataRoot({
+      argv: [exePath],
+      defaultUserDataDir: '/Users/me/Library/Application Support/UClaw',
+      exePath,
+    });
+
+    expect(resolved.source).toBe('portable-marker');
+    expect(resolved.dataRoot).toBe(resolve(appParent, 'data'));
+    expect(resolved.portable?.provisioning?.endpoint).toBe('https://laf.example.test/uclaw/provision');
+  });
+
+  it('uses a portable marker bundled in macOS app resources', async () => {
+    const appParent = await makeTempDir('uclaw-macos-resource-marker-');
+    const appBundle = join(appParent, 'UClaw.app');
+    const resourcesDir = join(appBundle, 'Contents', 'Resources');
+    const exePath = join(appBundle, 'Contents', 'MacOS', 'UClaw');
+    await mkdir(dirname(exePath), { recursive: true });
+    await mkdir(resourcesDir, { recursive: true });
+    await writeFile(join(resourcesDir, 'uclaw-portable.json'), `${JSON.stringify({
+      schema: 'uclaw-portable-data-root',
+      version: 2,
+      dataRoot: '../../../data',
+      workspaceMode: 'portable-workbench',
+      workspaceDir: 'workspace',
+      provisioning: {
+        endpoint: 'https://laf.example.test/uclaw/provision',
+        publicKeyId: 'laf-key-1',
+      },
+    })}\n`, 'utf8');
+
+    const resolved = resolveDataRoot({
+      argv: [exePath],
+      defaultUserDataDir: '/Users/me/Library/Application Support/UClaw',
+      exePath,
+    });
+
+    expect(resolved.source).toBe('portable-marker');
+    expect(resolved.dataRoot).toBe(resolve(appParent, 'data'));
+    expect(resolved.portable?.provisioning?.publicKeyId).toBe('laf-key-1');
+  });
+
   it('lets explicit startup arguments override the portable marker', async () => {
     const exeDir = await makeTempDir('uclaw-portable-exe-');
     const exePath = join(exeDir, 'UClaw.exe');

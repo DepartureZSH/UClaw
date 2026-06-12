@@ -279,13 +279,25 @@ function normalizePortableMarker(raw: unknown): PortableDataRootConfig {
   return marker;
 }
 
+function getPortableMarkerCandidates(exePath: string): string[] {
+  const candidates = [join(dirname(exePath), PORTABLE_DATA_ROOT_MARKER)];
+  const appBundleMatch = exePath.match(/^(.*?\.app)(?:[\\/]|$)/i);
+  if (appBundleMatch?.[1]) {
+    const appBundlePath = appBundleMatch[1];
+    candidates.push(join(dirname(appBundlePath), PORTABLE_DATA_ROOT_MARKER));
+    candidates.push(join(appBundlePath, 'Contents', 'Resources', PORTABLE_DATA_ROOT_MARKER));
+  }
+
+  return Array.from(new Set(candidates));
+}
+
 function readPortableMarker(exePath: string): { root: string; config: PortableDataRootConfig } | null {
-  const markerPath = join(dirname(exePath), PORTABLE_DATA_ROOT_MARKER);
-  if (!existsSync(markerPath)) return null;
+  const markerPath = getPortableMarkerCandidates(exePath).find((candidate) => existsSync(candidate));
+  if (!markerPath) return null;
 
   try {
     const config = normalizePortableMarker(JSON.parse(readFileSync(markerPath, 'utf8')));
-    return { root: normalizeRootPath(config.dataRoot, exePath), config };
+    return { root: normalizeRootPath(config.dataRoot, markerPath), config };
   } catch (error) {
     throw new Error(`portable data root marker is invalid: ${markerPath}`, { cause: error });
   }

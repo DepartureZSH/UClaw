@@ -33,13 +33,18 @@ export function CompanyKeyPage() {
       return;
     }
     setSaving(true);
-      setError(null);
+    setError(null);
     try {
       await invokeIpc('app:setCompanyKey', trimmed);
       const result = await runAction({ id: 'retry-current-step' });
       if (result?.snapshot.status === 'ready' || result?.snapshot.status === 'warning') {
         navigate('/', { replace: true });
+        return;
       }
+      const issue = result?.snapshot.issue;
+      setError(issue
+        ? `${issue.title}：${issue.suggestion}`
+        : (result?.snapshot.message || '配置同步未完成，请确认发布包完整后重试。'));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

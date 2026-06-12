@@ -187,6 +187,13 @@ export async function syncRemoteConfig(options: {
 }): Promise<RemoteConfigSyncResult> {
   const provisioning = await resolveProvisioningConfig();
   if (!provisioning.endpoint || !provisioning.packageId) {
+    if (!provisioning.endpoint && provisioning.packageId) {
+      return {
+        status: 'skipped',
+        message: '发布包缺少远程配置下发端点，请重新下载完整的 UClaw 发布包。',
+        detail: 'REMOTE_CONFIG_ENDPOINT_MISSING',
+      };
+    }
     return { status: 'skipped', message: '未配置远程配置下发，跳过' };
   }
 

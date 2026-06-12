@@ -154,7 +154,7 @@ Skills 页面可展示来自多个 OpenClaw 来源的技能（托管目录、wor
 
 #### 预构建版本（推荐）
 
-从 [Releases](https://github.com/DepartureZSH/UClaw/releases) 页面下载适用于你平台的最新版本。
+从 [Releases](https://github.com/DepartureZSH/UClaw/releases) 页面下载适用于你平台的最新 ZIP 版本。GitHub Releases 只发布 ZIP 包及对应的 `.blockmap` 文件。
 
 #### 从源码构建
 
@@ -173,7 +173,7 @@ pnpm dev
 
 当前商业 ZIP 版本会直接进入主窗口内的启动加载页，旧版首次启动 **Setup 设置向导** 不再属于普通用户流程。
 
-- Windows ZIP 使用随盘固定工作台：UClaw 数据保存在程序旁边的 `data/`，OpenClaw 运行文件固定在 `data/workspace`。
+- ZIP 版本使用随盘固定工作台：UClaw 数据保存在程序旁边的 `data/`，OpenClaw 运行文件固定在 `data/workspace`。
 - AI 与联网搜索配置由公司配置服务自动下发。
 - 如果随包凭证缺失或过期，UClaw 会显示 **公司密钥** 页面。普通用户只需要输入运维提供的公司密钥，不需要选择工作目录，也不需要手动填写 API 地址或 API Key。
 

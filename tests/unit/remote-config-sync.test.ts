@@ -144,6 +144,27 @@ describe('remote config sync', () => {
     }));
   });
 
+  it('reports missing provisioning endpoint separately from a missing company key', async () => {
+    portableConfig = {
+      schema: 'uclaw-portable-data-root',
+      version: 2,
+      dataRoot: 'data',
+      workspaceMode: 'portable-workbench',
+      workspaceDir: 'workspace',
+      provisioning: {},
+    };
+    getSettingMock.mockImplementation(async (key: string) => key === 'companyKey' ? 'company-key-001' : '');
+
+    const { syncRemoteConfig } = await import('@electron/main/remote-config-sync');
+    const result = await syncRemoteConfig({ appVersion: '0.3.6', platform: 'darwin' });
+
+    expect(result).toMatchObject({
+      status: 'skipped',
+      detail: 'REMOTE_CONFIG_ENDPOINT_MISSING',
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('applies cached config when remote fetch fails', async () => {
     const cacheDir = join(dataRoot, 'uclaw');
     await mkdir(cacheDir, { recursive: true });
