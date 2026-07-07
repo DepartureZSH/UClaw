@@ -26,7 +26,7 @@ import { buildProxyEnv, resolveProxySettings } from '../utils/proxy';
 import { syncProxyConfigToOpenClaw } from '../utils/openclaw-proxy';
 import { logger } from '../utils/logger';
 import { prependPathEntry } from '../utils/env-path';
-import { getConfiguredDataRoot } from '../utils/data-root';
+import { buildOpenClawRuntimePathEnv } from '../utils/openclaw-runtime-env';
 import { copyPluginFromNodeModules, fixupPluginManifest, cpSyncSafe } from '../utils/plugin-install';
 import { stripSystemdSupervisorEnv } from './config-sync-env';
 import { withConfigLock } from '../utils/config-mutex';
@@ -759,10 +759,7 @@ export async function prepareGatewayLaunchContext(port: number): Promise<Gateway
     ...(providerEnv['NEW_API_KEY'] && !providerEnv['KIMI_API_KEY'] ? { KIMI_API_KEY: providerEnv['NEW_API_KEY'] } : {}),
   };
 
-  // Set OPENCLAW_HOME so the gateway resolves all paths to the correct location.
-  // Explicit workspace dir takes priority over the unified data root.
-  const workspaceDir = process.env.UCLAW_WORKSPACE_DIR?.trim();
-  forkEnv.OPENCLAW_HOME = workspaceDir || getConfiguredDataRoot();
+  Object.assign(forkEnv, buildOpenClawRuntimePathEnv());
 
   // Ensure extension-specific packages (e.g. grammy from the telegram
   // extension) are resolvable by shared dist/ chunks via symlinks in

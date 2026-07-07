@@ -166,6 +166,7 @@
       "downloaded": "インストール準備完了: v{{version}}",
       "autoInstalling": "{{seconds}} 秒後に再起動して更新をインストールします...",
       "failed": "更新の確認に失敗しました",
+      "unsupported": "このビルドではアプリ内自動更新はサポートされていません",
       "latest": "最新バージョンです",
       "check": "更新を確認して最新の機能を入手"
     },
@@ -179,9 +180,12 @@
       "check": "更新を確認"
     },
     "currentVersion": "現在のバージョン",
+    "openclawRuntime": "同梱 OpenClaw ランタイム: {{version}}（UClaw と一緒に更新）",
+    "unknownVersion": "不明なバージョン",
     "whatsNew": "更新内容：",
     "errorDetails": "エラー詳細：",
-    "help": "自動アップデートが有効な場合、更新は自動的にダウンロードされインストールされます。"
+    "manualUpdateTitle": "手動更新：",
+    "help": "ポータブル ZIP 版では GitHub Releases から新しい ZIP をダウンロードし、UClaw を終了してからプログラムファイルを置き換えてください。同梱 OpenClaw ランタイムは UClaw と一緒に更新されます。"
   },
   "advanced": {
     "title": "詳細設定",

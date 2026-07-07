@@ -7,12 +7,15 @@ import { BrowserWindow, app, ipcMain } from 'electron';
 import { logger } from '../utils/logger';
 import { EventEmitter } from 'events';
 import { setQuitting } from './app-state';
+import { existsSync } from 'node:fs';
+import { resolveUpdateSupportState, type UpdateSupportState } from './update-support';
 
 export interface UpdateStatus {
-  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error' | 'unsupported';
   info?: UpdateInfo;
   progress?: ProgressInfo;
   error?: string;
+  unsupportedReason?: string;
 }
 
 export interface UpdaterEvents {
@@ -132,8 +135,17 @@ export class AppUpdater extends EventEmitter {
       info: newStatus.info,
       progress: newStatus.progress,
       error: newStatus.error,
+      unsupportedReason: newStatus.unsupportedReason,
     };
     this.sendToRenderer('update:status-changed', this.status);
+  }
+
+  private getUpdateSupportState(): UpdateSupportState {
+    return resolveUpdateSupportState({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appUpdateYmlExists: existsSync,
+    });
   }
 
   /**
@@ -154,6 +166,16 @@ export class AppUpdater extends EventEmitter {
    * final status so the UI never gets stuck in 'checking'.
    */
   async checkForUpdates(): Promise<UpdateInfo | null> {
+    const support = this.getUpdateSupportState();
+    if (!support.supported) {
+      logger.info(`[Updater] Update check skipped: ${support.reason}`);
+      this.updateStatus({
+        status: 'unsupported',
+        unsupportedReason: support.reason,
+      });
+      return null;
+    }
+
     try {
       const result = await autoUpdater.checkForUpdates();
 
@@ -182,6 +204,16 @@ export class AppUpdater extends EventEmitter {
    * Download available update
    */
   async downloadUpdate(): Promise<void> {
+    const support = this.getUpdateSupportState();
+    if (!support.supported) {
+      const error = new Error(support.reason ?? '当前版本不支持应用内自动更新。');
+      this.updateStatus({
+        status: 'unsupported',
+        unsupportedReason: error.message,
+      });
+      throw error;
+    }
+
     try {
       await autoUpdater.downloadUpdate();
     } catch (error) {
@@ -202,6 +234,15 @@ export class AppUpdater extends EventEmitter {
    * the window cleanly while ShipIt runs independently to replace the app.
    */
   quitAndInstall(): void {
+    const support = this.getUpdateSupportState();
+    if (!support.supported) {
+      this.updateStatus({
+        status: 'unsupported',
+        unsupportedReason: support.reason,
+      });
+      return;
+    }
+
     logger.info('[Updater] quitAndInstall called');
     setQuitting();
     autoUpdater.quitAndInstall();

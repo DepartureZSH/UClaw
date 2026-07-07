@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stripSystemdSupervisorEnv } from '@electron/gateway/config-sync-env';
@@ -44,6 +44,106 @@ describe('stripSystemdSupervisorEnv', () => {
 
     expect(env).toEqual(before);
     expect(result).toEqual({ VALUE: '1' });
+  });
+});
+
+describe('gateway launch environment', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it('passes explicit OpenClaw state and config paths to channel plugins', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'uclaw-gateway-env-'));
+    const dataRoot = join(root, 'data');
+    const configDir = join(dataRoot, 'workspace', '.openclaw');
+    const openclawDir = join(root, 'openclaw');
+    const entryPath = join(openclawDir, 'openclaw.mjs');
+    try {
+      await mkdir(openclawDir, { recursive: true });
+      await mkdir(configDir, { recursive: true });
+      await writeFile(join(openclawDir, 'package.json'), '{"name":"openclaw"}', 'utf8');
+      await writeFile(entryPath, 'export {};', 'utf8');
+
+      vi.doMock('electron', () => ({
+        app: {
+          isPackaged: false,
+          getPath: () => join(dataRoot, 'uclaw'),
+          getAppPath: () => root,
+        },
+      }));
+
+      vi.doMock('@electron/utils/paths', () => ({
+        getOpenClawDir: () => openclawDir,
+        getOpenClawEntryPath: () => entryPath,
+        isOpenClawPresent: () => true,
+        getOpenClawConfigDir: () => configDir,
+      }));
+      vi.doMock('@electron/utils/data-root', () => ({
+        getConfiguredDataRoot: () => dataRoot,
+      }));
+      vi.doMock('@electron/utils/store', () => ({
+        getAllSettings: vi.fn(async () => ({
+          gatewayToken: 'test-token',
+          proxyEnabled: false,
+        })),
+      }));
+      vi.doMock('@electron/utils/secure-storage', () => ({
+        getApiKey: vi.fn(async () => undefined),
+        getDefaultProvider: vi.fn(async () => undefined),
+        getProvider: vi.fn(async () => undefined),
+      }));
+      vi.doMock('@electron/utils/provider-registry', () => ({
+        getKeyableProviderTypes: () => [],
+        getProviderEnvVar: (providerType: string) => `${providerType.toUpperCase()}_API_KEY`,
+      }));
+      vi.doMock('@electron/utils/channel-config', () => ({
+        cleanupDanglingWeChatPluginState: vi.fn(async () => ({ cleanedDanglingState: false })),
+        listConfiguredChannelsFromConfig: vi.fn(async () => []),
+      }));
+      vi.doMock('@electron/utils/openclaw-auth', () => ({
+        batchSyncConfigFields: vi.fn(async () => undefined),
+        getOpenClawRuntimeApiKey: vi.fn(async () => undefined),
+        sanitizeOpenClawConfig: vi.fn(async () => undefined),
+      }));
+      vi.doMock('@electron/utils/openclaw-proxy', () => ({
+        syncProxyConfigToOpenClaw: vi.fn(async () => undefined),
+      }));
+      vi.doMock('@electron/utils/proxy', () => ({
+        buildProxyEnv: () => ({}),
+        resolveProxySettings: () => ({ httpProxy: '', httpsProxy: '', allProxy: '' }),
+      }));
+      vi.doMock('@electron/utils/logger', () => ({
+        logger: {
+          info: vi.fn(),
+          warn: vi.fn(),
+        },
+      }));
+      vi.doMock('@electron/utils/uv-env', () => ({
+        getUvRuntimeEnv: vi.fn(async () => ({})),
+      }));
+      vi.doMock('@electron/services/providers/provider-migration', () => ({
+        ensureProviderStoreMigrated: vi.fn(async () => undefined),
+      }));
+      vi.doMock('@electron/services/providers/provider-store', () => ({
+        listProviderAccounts: vi.fn(async () => []),
+      }));
+
+      delete process.env.UCLAW_WORKSPACE_DIR;
+      const { prepareGatewayLaunchContext } = await import('@electron/gateway/config-sync');
+      const context = await prepareGatewayLaunchContext(18789);
+
+      expect(context.forkEnv.OPENCLAW_HOME).toBe(dataRoot);
+      expect(context.forkEnv.OPENCLAW_STATE_DIR).toBe(configDir);
+      expect(context.forkEnv.CLAWDBOT_STATE_DIR).toBe(configDir);
+      expect(context.forkEnv.OPENCLAW_OAUTH_DIR).toBe(join(configDir, 'credentials'));
+      expect(context.forkEnv.OPENCLAW_CONFIG_PATH).toBe(join(configDir, 'openclaw.json'));
+      expect(context.forkEnv.OPENCLAW_CONFIG).toBe(join(configDir, 'openclaw.json'));
+      expect(context.forkEnv.OPENCLAW_SKIP_CHANNELS).toBe('1');
+    } finally {
+      delete process.env.UCLAW_WORKSPACE_DIR;
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

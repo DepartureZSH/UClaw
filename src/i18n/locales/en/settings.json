@@ -167,6 +167,7 @@
       "downloaded": "Ready to install: v{{version}}",
       "autoInstalling": "Restarting to install update in {{seconds}}s...",
       "failed": "Update check failed",
+      "unsupported": "In-app auto-update is not supported for this build",
       "latest": "You have the latest version",
       "check": "Check for updates to get the latest features"
     },
@@ -180,9 +181,12 @@
       "check": "Check for Updates"
     },
     "currentVersion": "Current Version",
+    "openclawRuntime": "Bundled OpenClaw runtime: {{version}} (updated with UClaw)",
+    "unknownVersion": "unknown version",
     "whatsNew": "What's New:",
     "errorDetails": "Error Details:",
-    "help": "When auto-update is enabled, updates are downloaded and installed automatically."
+    "manualUpdateTitle": "Manual update:",
+    "help": "For the portable ZIP build, download the new ZIP from GitHub Releases, quit UClaw, then replace the program files. The bundled OpenClaw runtime is updated with UClaw."
   },
   "advanced": {
     "title": "Advanced",

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { getOpenClawDir, getOpenClawEntryPath } from './paths';
 import { logger } from './logger';
 import { getUvRuntimeEnv } from './uv-env';
+import { buildOpenClawRuntimePathEnv } from './openclaw-runtime-env';
 
 const OPENCLAW_DOCTOR_TIMEOUT_MS = 60_000;
 const MAX_DOCTOR_OUTPUT_BYTES = 10 * 1024 * 1024;
@@ -108,6 +109,7 @@ async function runDoctorCommandWithArgs(
       env: {
         ...process.env,
         ...uvEnv,
+        ...buildOpenClawRuntimePathEnv(),
         PATH: finalPath,
         OPENCLAW_NO_RESPAWN: '1',
       } as NodeJS.ProcessEnv,

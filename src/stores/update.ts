@@ -27,7 +27,8 @@ export type UpdateStatus =
   | 'not-available'
   | 'downloading'
   | 'downloaded'
-  | 'error';
+  | 'error'
+  | 'unsupported';
 
 interface UpdateState {
   status: UpdateStatus;
@@ -77,12 +78,13 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
         info?: UpdateInfo;
         progress?: ProgressInfo;
         error?: string;
+        unsupportedReason?: string;
       }>('update:status');
       set({
         status: status.status,
         updateInfo: status.info || null,
         progress: status.progress || null,
-        error: status.error || null,
+        error: status.error || status.unsupportedReason || null,
       });
     } catch (error) {
       console.error('Failed to get update status:', error);
@@ -97,12 +99,13 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
         info?: UpdateInfo;
         progress?: ProgressInfo;
         error?: string;
+        unsupportedReason?: string;
       };
       set({
         status: status.status,
         updateInfo: status.info || null,
         progress: status.progress || null,
-        error: status.error || null,
+        error: status.error || status.unsupportedReason || null,
       });
     });
 
@@ -144,6 +147,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
           info?: UpdateInfo;
           progress?: ProgressInfo;
           error?: string;
+          unsupportedReason?: string;
         };
       };
       
@@ -152,7 +156,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
           status: result.status.status,
           updateInfo: result.status.info || null,
           progress: result.status.progress || null,
-          error: result.status.error || null,
+          error: result.status.error || result.status.unsupportedReason || null,
         });
       } else if (!result.success) {
         set({ status: 'error', error: result.error || 'Failed to check for updates' });

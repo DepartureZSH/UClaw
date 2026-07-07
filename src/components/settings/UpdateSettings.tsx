@@ -2,12 +2,13 @@
  * Update Settings Component
  * Displays update status and allows manual update checking/installation
  */
-import { useEffect, useCallback } from 'react';
-import { Download, RefreshCw, Loader2, Rocket, XCircle } from 'lucide-react';
+import { useEffect, useCallback, useState } from 'react';
+import { Download, RefreshCw, Loader2, Rocket, XCircle, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useUpdateStore } from '@/stores/update';
 import { useTranslation } from 'react-i18next';
+import { invokeIpc } from '@/lib/api-client';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -19,6 +20,7 @@ function formatBytes(bytes: number): string {
 
 export function UpdateSettings() {
   const { t } = useTranslation('settings');
+  const [openclawVersion, setOpenclawVersion] = useState<string | null>(null);
   const {
     status,
     currentVersion,
@@ -40,6 +42,12 @@ export function UpdateSettings() {
     init();
   }, [init]);
 
+  useEffect(() => {
+    invokeIpc<{ version?: string }>('openclaw:status')
+      .then((status) => setOpenclawVersion(status.version || null))
+      .catch(() => setOpenclawVersion(null));
+  }, []);
+
   const handleCheckForUpdates = useCallback(async () => {
     clearError();
     await checkForUpdates();
@@ -56,6 +64,8 @@ export function UpdateSettings() {
         return <Rocket className="h-4 w-4 text-primary" />;
       case 'error':
         return <RefreshCw className="h-4 w-4 text-destructive" />;
+      case 'unsupported':
+        return <Package className="h-4 w-4 text-muted-foreground" />;
       default:
         return <RefreshCw className="h-4 w-4 text-muted-foreground" />;
     }
@@ -76,6 +86,8 @@ export function UpdateSettings() {
         return t('updates.status.downloaded', { version: updateInfo?.version });
       case 'error':
         return error || t('updates.status.failed');
+      case 'unsupported':
+        return error || t('updates.status.unsupported');
       case 'not-available':
         return t('updates.status.latest');
       default:
@@ -128,6 +140,8 @@ export function UpdateSettings() {
             {t('updates.action.retry')}
           </Button>
         );
+      case 'unsupported':
+        return null;
       default:
         return (
           <Button onClick={handleCheckForUpdates} variant="outline" size="sm">
@@ -154,6 +168,9 @@ export function UpdateSettings() {
         <div className="space-y-1">
           <p className="text-sm font-medium">{t('updates.currentVersion')}</p>
           <p className="text-2xl font-bold">v{currentVersion}</p>
+          <p className="text-xs text-muted-foreground">
+            {t('updates.openclawRuntime', { version: openclawVersion || t('updates.unknownVersion') })}
+          </p>
         </div>
         {renderStatusIcon()}
       </div>
@@ -201,9 +218,11 @@ export function UpdateSettings() {
       )}
 
       {/* Error Details */}
-      {status === 'error' && error && (
+      {(status === 'error' || status === 'unsupported') && error && (
         <div className="rounded-lg bg-red-50 dark:bg-red-900/10 p-4 text-red-600 dark:text-red-400 text-sm">
-          <p className="font-medium mb-1">{t('updates.errorDetails')}</p>
+          <p className="font-medium mb-1">
+            {status === 'unsupported' ? t('updates.manualUpdateTitle') : t('updates.errorDetails')}
+          </p>
           <p>{error}</p>
         </div>
       )}

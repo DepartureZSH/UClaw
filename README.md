@@ -170,6 +170,7 @@ pnpm dev
 Current commercial ZIP builds start directly with the in-window startup page. The old first-run Setup Wizard is no longer part of the normal user flow.
 
 - ZIP builds use the portable workbench beside the app: `data/` for UClaw data and `data/workspace` for OpenClaw runtime files.
+- Portable ZIP builds do not use in-app auto-install updates. Download the new ZIP, quit UClaw, then replace the program files; the bundled OpenClaw runtime updates with UClaw.
 - AI and web-search settings are synchronized from the managed company configuration service.
 - If the package credential is missing or expired, UClaw shows a **Company Key** page. End users only enter the company key provided by operations; they do not choose a workspace or manually enter API endpoints/API keys.
 
