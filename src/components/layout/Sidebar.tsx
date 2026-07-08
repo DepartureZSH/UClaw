@@ -18,6 +18,9 @@ import {
   ExternalLink,
   Trash2,
   Cpu,
+  Pencil,
+  Check,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { rendererExtensionRegistry } from '@/extensions/registry';
@@ -113,6 +116,16 @@ function getAgentIdFromSessionKey(sessionKey: string): string {
   return agentId || 'main';
 }
 
+function getGatewaySidebarStatus(status: { state?: string; gatewayReady?: boolean }) {
+  if (status.state === 'running' && status.gatewayReady !== false) {
+    return { label: '正常', className: 'bg-emerald-500' };
+  }
+  if (status.state === 'starting' || status.state === 'stopping' || (status.state === 'running' && status.gatewayReady === false)) {
+    return { label: '重启中', className: 'bg-amber-500' };
+  }
+  return { label: '掉线', className: 'bg-red-500' };
+}
+
 export function Sidebar() {
   const sidebarCollapsed = useSettingsStore((state) => state.sidebarCollapsed);
   const setSidebarCollapsed = useSettingsStore((state) => state.setSidebarCollapsed);
@@ -124,6 +137,7 @@ export function Sidebar() {
   const switchSession = useChatStore((s) => s.switchSession);
   const newSession = useChatStore((s) => s.newSession);
   const deleteSession = useChatStore((s) => s.deleteSession);
+  const renameSession = useChatStore((s) => s.renameSession);
   const loadSessions = useChatStore((s) => s.loadSessions);
   const loadHistory = useChatStore((s) => s.loadHistory);
 
@@ -172,7 +186,10 @@ export function Sidebar() {
 
   const { t } = useTranslation(['common', 'chat']);
   const [sessionToDelete, setSessionToDelete] = useState<{ key: string; label: string } | null>(null);
+  const [sessionToRename, setSessionToRename] = useState<{ key: string; label: string } | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
   const [nowMs, setNowMs] = useState(INITIAL_NOW_MS);
+  const gatewaySidebarStatus = getGatewaySidebarStatus(gatewayStatus);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -229,6 +246,22 @@ export function Sidebar() {
       testId: item.testId,
     })),
   ];
+
+  const startRenameSession = (session: { key: string; displayName?: string; label?: string }) => {
+    const label = getSessionLabel(session.key, session.displayName, session.label);
+    setSessionToRename({ key: session.key, label });
+    setRenameDraft(label);
+  };
+
+  const commitRenameSession = async () => {
+    if (!sessionToRename) return;
+    const nextLabel = renameDraft.trim();
+    if (nextLabel && nextLabel !== sessionToRename.label) {
+      await renameSession(sessionToRename.key, nextLabel);
+    }
+    setSessionToRename(null);
+    setRenameDraft('');
+  };
 
   return (
     <aside
@@ -304,25 +337,81 @@ export function Sidebar() {
                 {bucket.sessions.map((s) => {
                   const agentId = getAgentIdFromSessionKey(s.key);
                   const agentName = agentNameById[agentId] || agentId;
+                  const isRenaming = sessionToRename?.key === s.key;
                   return (
                     <div key={s.key} className="group relative flex items-center">
-                      <button
-                        onClick={() => { switchSession(s.key); navigate('/'); }}
-                        className={cn(
-                          'w-full text-left rounded-lg px-2.5 py-1.5 text-[13px] transition-colors pr-7',
-                          'hover:bg-black/5 dark:hover:bg-white/5',
-                          isOnChat && currentSessionKey === s.key
-                            ? 'bg-black/5 dark:bg-white/10 text-foreground font-medium'
-                            : 'text-foreground/75',
-                        )}
-                      >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="shrink-0 rounded-full bg-black/[0.04] px-2 py-0.5 text-[10px] font-medium text-foreground/70 dark:bg-white/[0.08]">
-                            {agentName}
-                          </span>
-                          <span className="truncate">{getSessionLabel(s.key, s.displayName, s.label)}</span>
+                      {isRenaming ? (
+                        <div className="flex w-full items-center gap-1 rounded-lg bg-black/5 px-2 py-1 dark:bg-white/10">
+                          <input
+                            aria-label="会话名称"
+                            className="min-w-0 flex-1 rounded border bg-background px-2 py-1 text-[13px] outline-none focus:ring-1 focus:ring-primary"
+                            value={renameDraft}
+                            autoFocus
+                            onChange={(event) => setRenameDraft(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                void commitRenameSession();
+                              }
+                              if (event.key === 'Escape') {
+                                setSessionToRename(null);
+                                setRenameDraft('');
+                              }
+                            }}
+                          />
+                          <button
+                            aria-label="保存会话名称"
+                            className="rounded p-1 text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+                            onClick={() => void commitRenameSession()}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            aria-label="取消重命名"
+                            className="rounded p-1 text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+                            onClick={() => {
+                              setSessionToRename(null);
+                              setRenameDraft('');
+                            }}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
                         </div>
-                      </button>
+                      ) : (
+                        <button
+                          onClick={() => { switchSession(s.key); navigate('/'); }}
+                          className={cn(
+                            'w-full text-left rounded-lg px-2.5 py-1.5 text-[13px] transition-colors pr-12',
+                            'hover:bg-black/5 dark:hover:bg-white/5',
+                            isOnChat && currentSessionKey === s.key
+                              ? 'bg-black/5 dark:bg-white/10 text-foreground font-medium'
+                              : 'text-foreground/75',
+                          )}
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="shrink-0 rounded-full bg-black/[0.04] px-2 py-0.5 text-[10px] font-medium text-foreground/70 dark:bg-white/[0.08]">
+                              {agentName}
+                            </span>
+                            <span className="truncate">{getSessionLabel(s.key, s.displayName, s.label)}</span>
+                          </div>
+                        </button>
+                      )}
+                      {!isRenaming && (
+                        <button
+                          aria-label="重命名会话"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startRenameSession(s);
+                          }}
+                          className={cn(
+                            'absolute right-6 flex items-center justify-center rounded p-0.5 transition-opacity',
+                            'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                            'text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10',
+                          )}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                       <button
                         aria-label="Delete session"
                         onClick={(e) => {
@@ -334,7 +423,7 @@ export function Sidebar() {
                         }}
                         className={cn(
                           'absolute right-1 flex items-center justify-center rounded p-0.5 transition-opacity',
-                          'opacity-0 group-hover:opacity-100',
+                          isRenaming ? 'hidden' : 'opacity-0 group-hover:opacity-100 focus:opacity-100',
                           'text-muted-foreground hover:text-destructive hover:bg-destructive/10',
                         )}
                       >
@@ -351,6 +440,27 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="p-2 mt-auto">
+        {isOnChat && (
+          <div
+            data-testid="sidebar-gateway-status"
+            className={cn(
+              'mb-2 rounded-lg border border-black/5 bg-white/35 px-2.5 py-2 text-[12px] dark:border-white/10 dark:bg-white/[0.04]',
+              sidebarCollapsed && 'flex justify-center px-0',
+            )}
+            title={`网关状态：${gatewaySidebarStatus.label}`}
+          >
+            <div className={cn('flex items-center gap-2', sidebarCollapsed && 'justify-center')}>
+              <span className={cn('h-2 w-2 shrink-0 rounded-full', gatewaySidebarStatus.className)} />
+              {!sidebarCollapsed && (
+                <>
+                  <span className="text-muted-foreground">网关状态</span>
+                  <span className="ml-auto font-medium text-foreground">{gatewaySidebarStatus.label}</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         <NavLink
             to="/settings"
             data-testid="sidebar-nav-settings"

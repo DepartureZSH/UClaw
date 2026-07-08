@@ -193,4 +193,48 @@ describe('remote config sync', () => {
     await expect(syncRemoteConfig({ appVersion: '0.2.0', platform: 'win32' }))
       .rejects.toThrow('remote config unavailable');
   });
+
+  it('fetches the company support link from the Laf endpoint', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        support: {
+          url: 'https://uclaw.example.test/support',
+          title: 'UClaw Support',
+          message: 'Open the support site.',
+        },
+      }),
+    } as Response);
+
+    const { getCompanySupportLink } = await import('@electron/main/remote-config-sync');
+    const result = await getCompanySupportLink({ appVersion: '0.3.8', platform: 'win32' });
+
+    expect(result).toEqual({
+      success: true,
+      url: 'https://uclaw.example.test/support',
+      title: 'UClaw Support',
+      message: 'Open the support site.',
+      source: 'remote',
+    });
+    expect(fetch).toHaveBeenCalledWith('https://laf.example.test/uclaw/provision', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('"requestType":"support-link"'),
+    }));
+  });
+
+  it('falls back to the public website when the support link request fails', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+    } as Response);
+
+    const { getCompanySupportLink } = await import('@electron/main/remote-config-sync');
+    const result = await getCompanySupportLink({ appVersion: '0.3.8', platform: 'win32' });
+
+    expect(result.source).toBe('fallback');
+    expect(result.url).toBe('https://chatbot.cn.unreachablecity.club/');
+  });
 });

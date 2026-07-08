@@ -27,7 +27,7 @@ function parseSessionUpdatedAtMs(value: unknown): number | undefined {
 export function createSessionActions(
   set: ChatSet,
   get: ChatGet,
-): Pick<SessionHistoryActions, 'loadSessions' | 'switchSession' | 'newSession' | 'deleteSession' | 'cleanupEmptySession'> {
+): Pick<SessionHistoryActions, 'loadSessions' | 'switchSession' | 'newSession' | 'renameSession' | 'deleteSession' | 'cleanupEmptySession'> {
   return {
     loadSessions: async () => {
       try {
@@ -194,6 +194,22 @@ export function createSessionActions(
         } : {}),
       }));
       get().loadHistory();
+    },
+
+    renameSession: (key: string, label: string) => {
+      const nextLabel = label.trim();
+      if (!key || !nextLabel) return;
+      set((s) => ({
+        sessionLabels: {
+          ...s.sessionLabels,
+          [key]: nextLabel,
+        },
+        sessions: s.sessions.map((session) => (
+          session.key === key
+            ? { ...session, label: nextLabel, displayName: nextLabel }
+            : session
+        )),
+      }));
     },
 
     // ── Delete session ──

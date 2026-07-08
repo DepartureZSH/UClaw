@@ -148,6 +148,7 @@ const electronAPI = {
         'app:getWorkspaceDir',
         'app:getCompanyKey',
         'app:setCompanyKey',
+        'app:getCompanySupportLink',
         'app:workspaceHasOpenClawConfig',
         'app:selectWorkspaceDir',
         'app:applyWorkspaceDir',

@@ -20,6 +20,7 @@ const REMOTE_CONFIG_PACKAGE_ID_ENV = 'UCLAW_REMOTE_CONFIG_PACKAGE_ID';
 const REMOTE_CONFIG_PUBLIC_KEY_ID_ENV = 'UCLAW_REMOTE_CONFIG_PUBLIC_KEY_ID';
 const REMOTE_CONFIG_TIMEOUT_MS = 15_000;
 const REMOTE_CONFIG_CACHE_FILE = 'remote-config-cache.json';
+const DEFAULT_COMPANY_SUPPORT_URL = 'https://chatbot.cn.unreachablecity.club/';
 
 export interface RemoteConfigProvider {
   id: 'new-api';
@@ -48,6 +49,14 @@ export interface RemoteConfigSyncResult {
   detail?: string;
   configVersion?: string;
   source?: 'remote' | 'cache';
+}
+
+export interface CompanySupportLinkResult {
+  success: boolean;
+  url: string;
+  title: string;
+  message: string;
+  source: 'remote' | 'fallback';
 }
 
 function normalizeString(value: unknown): string {
@@ -150,6 +159,84 @@ async function fetchRemoteConfig(
       throw new Error(`remote config unavailable: HTTP ${response.status}`);
     }
     return validateRemoteConfig(await response.json());
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeSupportUrl(value: unknown): string {
+  const raw = normalizeString(value);
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+function parseSupportLinkPayload(raw: unknown): CompanySupportLinkResult | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const payload = raw as Record<string, unknown>;
+  const support = payload.support && typeof payload.support === 'object' && !Array.isArray(payload.support)
+    ? payload.support as Record<string, unknown>
+    : {};
+  const url = normalizeSupportUrl(
+    support.url
+    ?? support.websiteUrl
+    ?? payload.supportUrl
+    ?? payload.websiteUrl
+    ?? payload.url,
+  );
+  if (!url) return null;
+  return {
+    success: true,
+    url,
+    title: normalizeString(support.title ?? payload.title) || 'UClaw 客服支持',
+    message: normalizeString(support.message ?? payload.message) || '请打开官网联系运维支持。',
+    source: 'remote',
+  };
+}
+
+function fallbackSupportLink(): CompanySupportLinkResult {
+  return {
+    success: true,
+    url: DEFAULT_COMPANY_SUPPORT_URL,
+    title: 'UClaw 客服支持',
+    message: '远程客服入口暂不可用，请通过官网联系运维支持。',
+    source: 'fallback',
+  };
+}
+
+export async function getCompanySupportLink(options: {
+  appVersion: string;
+  platform?: NodeJS.Platform;
+}): Promise<CompanySupportLinkResult> {
+  const provisioning = await resolveProvisioningConfig();
+  if (!provisioning.endpoint) return fallbackSupportLink();
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(provisioning.endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        requestType: 'support-link',
+        packageId: provisioning.packageId ?? '',
+        appVersion: options.appVersion,
+        platform: options.platform ?? process.platform,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`support link request failed: HTTP ${response.status}`);
+    }
+    const parsed = parseSupportLinkPayload(await response.json());
+    return parsed ?? fallbackSupportLink();
+  } catch (error) {
+    logger.warn('[remote-config] Failed to fetch company support link; using fallback:', error);
+    return fallbackSupportLink();
   } finally {
     clearTimeout(timeout);
   }

@@ -141,6 +141,20 @@ describe('chat session actions', () => {
     nowSpy.mockRestore();
   });
 
+  it('renameSession updates the local display label', async () => {
+    const { createSessionActions } = await import('@/stores/chat/session-actions');
+    const h = makeHarness({
+      currentSessionKey: 'agent:foo:session-a',
+      sessions: [{ key: 'agent:foo:session-a' }],
+      sessionLabels: { 'agent:foo:session-a': 'Old name' },
+    });
+    const actions = createSessionActions(h.set as never, h.get as never);
+
+    actions.renameSession('agent:foo:session-a', 'New name');
+
+    expect(h.read().sessionLabels['agent:foo:session-a']).toBe('New name');
+  });
+
   it('seeds sessionLastActivity from backend updatedAt metadata', async () => {
     const { createSessionActions } = await import('@/stores/chat/session-actions');
     const h = makeHarness({

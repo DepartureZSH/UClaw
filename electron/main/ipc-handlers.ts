@@ -68,6 +68,7 @@ import {
 import { validateApiKeyWithProvider } from '../services/providers/provider-validation';
 import { getKimiWebSearchStatus } from '../gateway/config-sync';
 import { appUpdater } from './updater';
+import { getCompanySupportLink } from './remote-config-sync';
 import { registerHostApiProxyHandlers } from './ipc/host-api-proxy';
 import {
   isLaunchAtStartupKey,
@@ -2252,6 +2253,10 @@ function registerAppHandlers(): void {
     }
     return { success: true };
   });
+
+  ipcMain.handle('app:getCompanySupportLink', async () => (
+    await getCompanySupportLink({ appVersion: app.getVersion() })
+  ));
 
   ipcMain.handle('app:workspaceHasOpenClawConfig', async (_, dir: string) => {
     const workspaceDir = typeof dir === 'string' ? dir.trim() : '';

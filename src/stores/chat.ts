@@ -65,8 +65,32 @@ const SESSION_LOAD_MIN_INTERVAL_MS = 1_200;
 const HISTORY_LOAD_MIN_INTERVAL_MS = 800;
 const HISTORY_POLL_SILENCE_WINDOW_MS = 2_500;
 const CHAT_EVENT_DEDUPE_TTL_MS = 30_000;
+const SESSION_LABELS_STORAGE_KEY = 'uclaw:chat-session-labels';
 const _chatEventDedupe = new Map<string, number>();
 let _pendingOptimisticUserMessageId: string | null = null;
+
+function loadPersistedSessionLabels(): Record<string, string> {
+  try {
+    if (typeof localStorage === 'undefined') return {};
+    const raw = localStorage.getItem(SESSION_LABELS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, string] => Boolean(entry[0]) && typeof entry[1] === 'string' && entry[1].trim().length > 0,
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function savePersistedSessionLabels(labels: Record<string, string>): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(SESSION_LABELS_STORAGE_KEY, JSON.stringify(labels));
+  } catch { /* ignore storage errors */ }
+}
 
 function clearPendingOptimisticUserMessage(): void {
   _pendingOptimisticUserMessageId = null;
@@ -1195,7 +1219,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
   currentSessionKey: DEFAULT_SESSION_KEY,
   currentAgentId: 'main',
-  sessionLabels: {},
+  sessionLabels: loadPersistedSessionLabels(),
   sessionLastActivity: {},
 
   thinkingLevel: null,
@@ -1315,7 +1339,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
                           const labelText = getMessageText(firstUser.content).trim();
                           if (labelText) {
                             const truncated = labelText.length > 50 ? `${labelText.slice(0, 50)}…` : labelText;
-                            next.sessionLabels = { ...s.sessionLabels, [session.key]: truncated };
+                            if (!s.sessionLabels[session.key]) {
+                              next.sessionLabels = { ...s.sessionLabels, [session.key]: truncated };
+                            }
                           }
                         }
                         if (lastMsg?.timestamp) {
@@ -1468,6 +1494,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
   },
 
+  renameSession: (key: string, label: string) => {
+    const nextLabel = label.trim();
+    if (!key || !nextLabel) return;
+    set((s) => {
+      const sessionLabels = { ...s.sessionLabels, [key]: nextLabel };
+      savePersistedSessionLabels(sessionLabels);
+      return {
+        sessionLabels,
+        sessions: s.sessions.map((session) => (
+          session.key === key
+            ? { ...session, label: nextLabel, displayName: nextLabel }
+            : session
+        )),
+      };
+    });
+  },
+
   // ── Cleanup empty session on navigate away ──
 
   cleanupEmptySession: () => {
@@ -1600,7 +1643,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
           if (labelText) {
             const truncated = labelText.length > 50 ? `${labelText.slice(0, 50)}…` : labelText;
             set((s) => ({
-              sessionLabels: { ...s.sessionLabels, [currentSessionKey]: truncated },
+              sessionLabels: s.sessionLabels[currentSessionKey]
+                ? s.sessionLabels
+                : { ...s.sessionLabels, [currentSessionKey]: truncated },
             }));
           }
         }

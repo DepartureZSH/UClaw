@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react';
+import { Building2, ExternalLink, Eye, EyeOff, Headphones, Loader2, RefreshCw } from 'lucide-react';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,12 +8,22 @@ import { Label } from '@/components/ui/label';
 import { invokeIpc } from '@/lib/api-client';
 import { useStartupStore } from '@/stores/startup';
 
+interface CompanySupportLink {
+  success: boolean;
+  url: string;
+  title: string;
+  message: string;
+  source?: 'remote' | 'fallback';
+}
+
 export function CompanyKeyPage() {
   const navigate = useNavigate();
   const runAction = useStartupStore((state) => state.runAction);
   const [companyKey, setCompanyKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportLink, setSupportLink] = useState<CompanySupportLink | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,6 +59,19 @@ export function CompanyKeyPage() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const contactSupport = async () => {
+    setSupportLoading(true);
+    setError(null);
+    try {
+      const result = await invokeIpc<CompanySupportLink>('app:getCompanySupportLink');
+      setSupportLink(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSupportLoading(false);
     }
   };
 
@@ -114,10 +137,27 @@ export function CompanyKeyPage() {
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                 保存并同步配置
               </Button>
-              <Button type="button" variant="outline" onClick={() => navigate('/', { replace: true })}>
-                返回启动页
+              <Button type="button" variant="outline" onClick={contactSupport} disabled={supportLoading}>
+                {supportLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Headphones className="mr-2 h-4 w-4" />}
+                联系客服
               </Button>
             </div>
+
+            {supportLink && (
+              <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                <p className="font-medium text-foreground">{supportLink.title}</p>
+                <p className="mt-1 text-muted-foreground">{supportLink.message}</p>
+                <a
+                  className="mt-3 inline-flex items-center gap-1.5 text-primary hover:underline"
+                  href={supportLink.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  打开官网链接
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            )}
           </form>
         </section>
       </main>
