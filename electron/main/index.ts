@@ -47,6 +47,7 @@ import { whatsAppLoginManager } from '../utils/whatsapp-login';
 import { initializeDataRoot, resolveDataRoot, type DataRootResolution } from '../utils/data-root';
 import { buildStorageDiagnostics } from '../utils/storage-diagnostics';
 import { StartupProgressService } from './startup-progress-service';
+import { setStartupDiagnosticsProvider } from './diagnostics-context';
 
 // On Windows, set console output code page to UTF-8 (65001) early so that
 // CJK characters in gateway stderr logs are not garbled when displayed in
@@ -601,6 +602,7 @@ if (gotTheLock) {
     gatewayManager,
     getMainWindow: () => mainWindow,
   });
+  setStartupDiagnosticsProvider(startupProgressService);
 
   // Register builtin extensions and load manifest
   registerAllBuiltinExtensions();

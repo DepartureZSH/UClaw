@@ -5,6 +5,7 @@ import { getConfiguredDataRoot } from '../utils/data-root';
 import { logger } from '../utils/logger';
 import { getOpenClawConfigDir, getOpenClawStatus } from '../utils/paths';
 import { redactDiagnosticsValue } from '../utils/diagnostics-redaction';
+import { getStartupDiagnosticsProvider } from './diagnostics-context';
 
 const DEFAULT_TAIL_LINES = 200;
 
@@ -114,6 +115,9 @@ export async function buildSupportDiagnosticsPackage(input: {
   const dataRoot = input.storageDiagnostics.dataRoot || getConfiguredDataRoot();
   const openclawConfigDir = input.storageDiagnostics.openclawDir || getOpenClawConfigDir();
   const uclawDir = input.storageDiagnostics.uclawDir || join(dataRoot, 'uclaw');
+  const startupProvider = getStartupDiagnosticsProvider();
+  const startupSnapshot = input.startupSnapshot ?? startupProvider?.getSnapshot();
+  const repairActions = input.repairActions ?? startupProvider?.getRepairActionRecords() ?? [];
   const pkg: SupportDiagnosticsPackage = {
     schema: 'uclaw-support-diagnostics',
     version: 1,
@@ -133,13 +137,13 @@ export async function buildSupportDiagnosticsPackage(input: {
       providerStorePath: input.storageDiagnostics.providerStorePath,
       logDir: logger.getLogDir(),
     },
-    startup: input.startupSnapshot
+    startup: startupSnapshot
       ? {
-        status: input.startupSnapshot.status,
-        currentStep: input.startupSnapshot.currentStep,
-        message: input.startupSnapshot.message,
-        issue: input.startupSnapshot.issue,
-        steps: input.startupSnapshot.steps.map((step) => ({
+        status: startupSnapshot.status,
+        currentStep: startupSnapshot.currentStep,
+        message: startupSnapshot.message,
+        issue: startupSnapshot.issue,
+        steps: startupSnapshot.steps.map((step) => ({
           id: step.id,
           status: step.status,
           message: step.message,
@@ -162,7 +166,7 @@ export async function buildSupportDiagnosticsPackage(input: {
       gatewayTail: await readTail(join(openclawConfigDir, 'logs', 'gateway.log')),
       gatewayErrTail: await readTail(join(openclawConfigDir, 'logs', 'gateway.err.log')),
     },
-    repairActions: input.repairActions ?? [],
+    repairActions,
   };
 
   return redactDiagnosticsValue(pkg);

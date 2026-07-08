@@ -24,6 +24,44 @@ vi.mock('@electron/utils/logger', () => ({
 }));
 
 describe('support diagnostics package', () => {
+  it('uses the registered startup diagnostics provider when explicit startup input is absent', async () => {
+    const { buildSupportDiagnosticsPackage } = await import('@electron/main/diagnostics-package');
+    const { clearStartupDiagnosticsProvider, setStartupDiagnosticsProvider } = await import('@electron/main/diagnostics-context');
+
+    setStartupDiagnosticsProvider({
+      getSnapshot: () => ({
+        status: 'timeout',
+        currentStep: 'gateway-start',
+        message: '正在确认 RPC 可用',
+        steps: [
+          { id: 'gateway-start', status: 'timeout', message: 'Gateway 响应超时', detail: 'rpc-ready' },
+        ],
+      }),
+      getRepairActionRecords: () => [
+        { id: 'restart-gateway', status: 'started', at: '2026-07-08T00:00:00.000Z' },
+      ],
+    });
+
+    try {
+      const pkg = await buildSupportDiagnosticsPackage({
+        storageDiagnostics: {
+          dataRoot: 'F:/windows/data',
+        },
+      });
+
+      expect(pkg.startup).toMatchObject({
+        status: 'timeout',
+        currentStep: 'gateway-start',
+        message: '正在确认 RPC 可用',
+      });
+      expect(pkg.repairActions).toEqual([
+        expect.objectContaining({ id: 'restart-gateway', status: 'started' }),
+      ]);
+    } finally {
+      clearStartupDiagnosticsProvider();
+    }
+  });
+
   it('collects startup, storage, gateway, logs, and redacts secrets', async () => {
     const { buildSupportDiagnosticsPackage, formatSupportDiagnosticsText } = await import('@electron/main/diagnostics-package');
     const pkg = await buildSupportDiagnosticsPackage({
