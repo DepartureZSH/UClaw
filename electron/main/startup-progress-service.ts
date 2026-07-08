@@ -16,7 +16,7 @@ import {
 import { getAllSettings, getSetting, setSetting, type AppSettings } from '../utils/store';
 import { logger } from '../utils/logger';
 import { resolveStartupRuntimeConfig, type StartupRuntimeConfig } from '../utils/startup-config';
-import { resolvePortableWorkspaceDir, resolveStartupWorkspaceState } from './workspace-startup';
+import { resolvePortableWorkspaceDir, resolveStartupWorkspaceState, type StartupWorkspaceState } from './workspace-startup';
 import { syncRemoteConfig } from './remote-config-sync';
 import type {
   StartupAction,
@@ -60,6 +60,8 @@ type StepRunResult = {
   actions?: StartupAction[];
   issue?: StartupIssue;
 };
+
+type WorkspaceStepResult = StepRunResult & StartupWorkspaceState;
 
 type ProviderWarning = {
   message: string;
@@ -619,7 +621,20 @@ export class StartupProgressService {
         return { message: '本机设置读取完成' };
       });
 
-      await this.runStep('workspace-resolve', '正在解析工作区', async () => await this.resolveWorkspace(context));
+      const workspaceResult = await this.runStep(
+        'workspace-resolve',
+        '正在解析随盘工作台',
+        async () => await this.resolveWorkspace(context),
+      ) as WorkspaceStepResult | undefined;
+
+      await this.runStep('workspace-repair', '正在确认随盘工作区', async () => {
+        if (workspaceResult?.mode !== 'portable-workbench') {
+          return { status: 'skipped', message: '非随盘工作台，跳过工作区修复' };
+        }
+        return {
+          message: workspaceResult.repaired ? '随盘工作区已就绪' : '随盘工作区无需修复',
+        };
+      });
 
       const setupResult = await this.runStep('setup-check', '正在检查 Setup 状态', async () => {
         const setupComplete = context.isE2EMode && process.env.UCLAW_E2E_SKIP_SETUP === '1'
@@ -629,7 +644,7 @@ export class StartupProgressService {
           await setSetting('setupComplete', true);
           return {
             status: 'success',
-            message: '已跳过旧 Setup 向导',
+            message: '已兼容旧版 Setup 状态',
             issue: createIssue(
               'normal-blocking',
               'S3',
@@ -755,12 +770,26 @@ export class StartupProgressService {
     }
   }
 
-  private async resolveWorkspace(context: StartupContext): Promise<StepRunResult> {
+  private async resolveWorkspace(context: StartupContext): Promise<WorkspaceStepResult> {
     if (context.isE2EMode) {
-      return { message: 'E2E 模式跳过工作区副作用' };
+      return {
+        setupComplete: true,
+        workspaceDir: '',
+        mode: 'legacy',
+        repaired: false,
+        message: 'E2E 模式跳过工作区副作用',
+      };
     }
 
-    const { setupComplete, workspaceDir, resetReason, resetWorkspaceDir } = await resolveStartupWorkspaceState();
+    const {
+      setupComplete,
+      workspaceDir,
+      resetReason,
+      resetWorkspaceDir,
+      mode,
+      repaired,
+      storedWorkspaceDir,
+    } = await resolveStartupWorkspaceState();
     if (resetReason) {
       logger.warn(
         resetReason === 'missing-workspace'
@@ -769,6 +798,10 @@ export class StartupProgressService {
       );
       delete process.env.UCLAW_WORKSPACE_DIR;
       return {
+        setupComplete,
+        workspaceDir,
+        mode: 'legacy',
+        repaired: false,
         status: 'warning',
         message: '已忽略不可用的旧工作区路径',
         detail: resetWorkspaceDir,
@@ -788,16 +821,45 @@ export class StartupProgressService {
 
     if (workspaceDir) {
       process.env.UCLAW_WORKSPACE_DIR = workspaceDir;
+      if (mode === 'portable-workbench') {
+        logger.info(`[workspace] Using portable workbench: ${workspaceDir} (stored=${storedWorkspaceDir ?? 'workspace'})`);
+        return {
+          setupComplete,
+          workspaceDir,
+          storedWorkspaceDir,
+          mode,
+          repaired,
+          message: `使用随盘工作台：${workspaceDir}`,
+        };
+      }
       logger.info(`[workspace] Using custom workspace: ${workspaceDir}`);
-      return { message: `使用工作区：${workspaceDir}` };
+      return {
+        setupComplete,
+        workspaceDir,
+        mode: 'legacy',
+        repaired: false,
+        message: `使用工作区：${workspaceDir}`,
+      };
     }
 
     if (!setupComplete) {
       delete process.env.UCLAW_WORKSPACE_DIR;
-      return { message: 'Setup 未完成，暂不使用持久化工作区' };
+      return {
+        setupComplete,
+        workspaceDir,
+        mode: 'legacy',
+        repaired: false,
+        message: '旧版 Setup 未完成，暂不使用持久化工作区',
+      };
     }
 
-    return { message: '使用默认 OpenClaw 工作区' };
+    return {
+      setupComplete,
+      workspaceDir,
+      mode: 'legacy',
+      repaired: false,
+      message: '使用默认 OpenClaw 工作区',
+    };
   }
 
   private async checkProviderKeys(): Promise<ProviderWarning | null> {

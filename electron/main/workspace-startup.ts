@@ -15,6 +15,8 @@ export interface StartupWorkspaceState {
   setupComplete: boolean;
   workspaceDir: string;
   storedWorkspaceDir?: string;
+  mode?: 'portable-workbench' | 'legacy';
+  repaired?: boolean;
   resetReason?: 'missing-workspace' | 'empty-workspace';
   resetWorkspaceDir?: string;
 }
@@ -83,6 +85,8 @@ export async function resolveStartupWorkspaceState(options: {
       setupComplete: true,
       workspaceDir: portableWorkspace.resolved,
       storedWorkspaceDir: portableWorkspace.stored,
+      mode: 'portable-workbench',
+      repaired: true,
     };
   }
 
@@ -93,8 +97,8 @@ export async function resolveStartupWorkspaceState(options: {
     const resetReason = workspaceDir ? 'missing-workspace' : 'empty-workspace';
     setupComplete = false;
     workspaceDir = '';
-    return { setupComplete, workspaceDir, resetReason, resetWorkspaceDir };
+    return { setupComplete, workspaceDir, mode: 'legacy', resetReason, resetWorkspaceDir };
   }
 
-  return { setupComplete, workspaceDir };
+  return { setupComplete, workspaceDir, mode: 'legacy' };
 }

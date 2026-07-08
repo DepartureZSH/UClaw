@@ -30,6 +30,7 @@ describe('resolveStartupWorkspaceState', () => {
     expect(result).toEqual({
       setupComplete: true,
       workspaceDir: 'E:/Desktop/test/workspace6',
+      mode: 'legacy',
     });
     expect(store.setSetting).not.toHaveBeenCalled();
   });
@@ -49,6 +50,7 @@ describe('resolveStartupWorkspaceState', () => {
     expect(result).toEqual({
       setupComplete: false,
       workspaceDir: '',
+      mode: 'legacy',
       resetReason: 'missing-workspace',
       resetWorkspaceDir: 'E:/Desktop/test/workspace6',
     });
@@ -71,6 +73,7 @@ describe('resolveStartupWorkspaceState', () => {
     expect(result).toEqual({
       setupComplete: false,
       workspaceDir: '',
+      mode: 'legacy',
       resetReason: 'empty-workspace',
       resetWorkspaceDir: undefined,
     });
@@ -156,5 +159,64 @@ describe('resolveStartupWorkspaceState', () => {
     expect(result.storedWorkspaceDir).toBe('workspace');
     expect(store.settings.setupComplete).toBe(true);
     expect(store.settings.workspaceDir).toBe('workspace');
+  });
+
+  it('reports portable workspace repair when it creates the workbench directory', async () => {
+    const store = createSettings({
+      setupComplete: false,
+      workspaceDir: 'E:/old/workspace',
+    });
+    const ensureWorkspace = vi.fn();
+
+    const result = await resolveStartupWorkspaceState({
+      getSetting: store.getSetting,
+      setSetting: store.setSetting,
+      dataRoot: 'F:/windows/data',
+      ensureWorkspace,
+      portableConfig: {
+        schema: 'uclaw-portable-data-root',
+        version: 2,
+        dataRoot: 'data',
+        workspaceMode: 'portable-workbench',
+        workspaceDir: 'workspace',
+      },
+    });
+
+    expect(result).toMatchObject({
+      setupComplete: true,
+      workspaceDir: resolve('F:/windows/data', 'workspace'),
+      storedWorkspaceDir: 'workspace',
+      mode: 'portable-workbench',
+      repaired: true,
+    });
+    expect(ensureWorkspace).toHaveBeenCalledWith(resolve('F:/windows/data', 'workspace'));
+    expect(store.settings.workspaceDir).toBe('workspace');
+    expect(store.settings.setupComplete).toBe(true);
+  });
+
+  it('throws a portable repair error without resetting setup when the workbench cannot be created', async () => {
+    const store = createSettings({
+      setupComplete: true,
+      workspaceDir: 'E:/old/workspace',
+    });
+
+    await expect(resolveStartupWorkspaceState({
+      getSetting: store.getSetting,
+      setSetting: store.setSetting,
+      dataRoot: 'F:/windows/data',
+      ensureWorkspace: () => {
+        throw new Error('portable workspace repair failed: F:/windows/data/workspace');
+      },
+      portableConfig: {
+        schema: 'uclaw-portable-data-root',
+        version: 2,
+        dataRoot: 'data',
+        workspaceMode: 'portable-workbench',
+        workspaceDir: 'workspace',
+      },
+    })).rejects.toThrow('portable workspace repair failed');
+
+    expect(store.settings.setupComplete).toBe(true);
+    expect(store.settings.workspaceDir).toBe('E:/old/workspace');
   });
 });

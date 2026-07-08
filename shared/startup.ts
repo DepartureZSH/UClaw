@@ -2,6 +2,7 @@ export type StartupStepId =
   | 'app-init'
   | 'settings-load'
   | 'workspace-resolve'
+  | 'workspace-repair'
   | 'setup-check'
   | 'config-sync'
   | 'remote-config-sync'
@@ -102,6 +103,7 @@ export const STARTUP_STEP_ORDER: StartupStepId[] = [
   'app-init',
   'settings-load',
   'workspace-resolve',
+  'workspace-repair',
   'setup-check',
   'config-sync',
   'remote-config-sync',
@@ -113,7 +115,8 @@ export const STARTUP_STEP_LABELS: Record<StartupStepId, string> = {
   'app-init': '应用初始化',
   'settings-load': '读取本机设置',
   'workspace-resolve': '解析工作区',
-  'setup-check': '检查 Setup 状态',
+  'workspace-repair': '修复随盘工作区',
+  'setup-check': '检查用户配置状态',
   'config-sync': '同步配置',
   'remote-config-sync': '同步远程配置',
   'provider-key-sync': '检查 Provider 密钥',

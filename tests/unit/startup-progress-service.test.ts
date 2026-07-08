@@ -94,6 +94,7 @@ class FakeGatewayManager extends EventEmitter {
 describe('StartupProgressService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.UCLAW_WORKSPACE_DIR;
     getAllSettingsMock.mockResolvedValue({ setupComplete: true, gatewayAutoStart: false });
     getSettingMock.mockImplementation(async (key: string) => {
       if (key === 'setupComplete') return true;
@@ -129,11 +130,23 @@ describe('StartupProgressService', () => {
       ['app-init', 'success'],
       ['settings-load', 'success'],
       ['workspace-resolve', 'success'],
+      ['workspace-repair', 'skipped'],
       ['setup-check', 'success'],
       ['config-sync', 'success'],
       ['remote-config-sync', 'success'],
       ['provider-key-sync', 'skipped'],
       ['gateway-start', 'skipped'],
+    ]);
+    expect(snapshot.steps.map((step) => step.id)).toEqual([
+      'app-init',
+      'settings-load',
+      'workspace-resolve',
+      'workspace-repair',
+      'setup-check',
+      'config-sync',
+      'remote-config-sync',
+      'provider-key-sync',
+      'gateway-start',
     ]);
     expect(gatewayManager.start).not.toHaveBeenCalled();
   });
@@ -160,6 +173,7 @@ describe('StartupProgressService', () => {
     expect(snapshot.status).toBe('ready');
     expect(setSettingMock).toHaveBeenCalledWith('setupComplete', true);
     expect(snapshot.steps.find((step) => step.id === 'setup-check')?.status).toBe('success');
+    expect(snapshot.steps.find((step) => step.id === 'workspace-repair')?.status).toBe('skipped');
     expect(snapshot.steps.find((step) => step.id === 'gateway-start')?.status).toBe('skipped');
     expect(snapshot.steps.find((step) => step.id === 'remote-config-sync')?.status).toBe('success');
     expect(gatewayManager.start).not.toHaveBeenCalled();
@@ -208,6 +222,7 @@ describe('StartupProgressService', () => {
     expect(snapshot.status).toBe('ready');
     expect(snapshot.steps.find((step) => step.id === 'app-init')?.status).toBe('success');
     expect(snapshot.steps.find((step) => step.id === 'workspace-resolve')?.status).toBe('success');
+    expect(snapshot.steps.find((step) => step.id === 'workspace-repair')?.status).toBe('skipped');
     expect(snapshot.issue?.code).not.toBe('MACOS_APP_TRANSLOCATION');
     expect(gatewayManager.start).not.toHaveBeenCalled();
   });
@@ -233,6 +248,64 @@ describe('StartupProgressService', () => {
 
     expect(snapshot.steps.find((step) => step.id === 'remote-config-sync')?.status).toBe('success');
     expect(syncRemoteConfigMock).toHaveBeenCalled();
+  });
+
+  it('marks portable workspace repair as successful before company config sync', async () => {
+    resolveStartupWorkspaceStateMock.mockResolvedValue({
+      setupComplete: true,
+      workspaceDir: 'F:/windows/data/workspace',
+      storedWorkspaceDir: 'workspace',
+      mode: 'portable-workbench',
+      repaired: true,
+    });
+
+    const { StartupProgressService } = await import('@electron/main/startup-progress-service');
+    const gatewayManager = new FakeGatewayManager();
+    const service = new StartupProgressService({
+      gatewayManager: gatewayManager as never,
+      getMainWindow: () => null,
+    });
+
+    const snapshot = await service.runInitialStartup({
+      isE2EMode: false,
+      storageDiagnostics: { isAppTranslocated: false },
+    });
+
+    expect(snapshot.status).toBe('ready');
+    expect(snapshot.steps.find((step) => step.id === 'workspace-resolve')?.message)
+      .toContain('随盘工作台');
+    expect(snapshot.steps.find((step) => step.id === 'workspace-repair')?.status).toBe('success');
+    expect(snapshot.steps.find((step) => step.id === 'workspace-repair')?.message)
+      .toContain('随盘工作区已就绪');
+    expect(snapshot.steps.find((step) => step.id === 'remote-config-sync')?.status).toBe('success');
+    expect(process.env.UCLAW_WORKSPACE_DIR).toBe('F:/windows/data/workspace');
+  });
+
+  it('blocks startup when portable workspace repair fails', async () => {
+    resolveStartupWorkspaceStateMock.mockRejectedValue(
+      new Error('portable workspace repair failed: F:/windows/data/workspace'),
+    );
+
+    const { StartupProgressService } = await import('@electron/main/startup-progress-service');
+    const gatewayManager = new FakeGatewayManager();
+    const service = new StartupProgressService({
+      gatewayManager: gatewayManager as never,
+      getMainWindow: () => null,
+    });
+
+    const snapshot = await service.runInitialStartup({
+      isE2EMode: false,
+      storageDiagnostics: { isAppTranslocated: false, dataRoot: 'F:/windows/data' },
+    });
+
+    expect(snapshot.status).toBe('error');
+    expect(snapshot.currentStep).toBe('workspace-resolve');
+    expect(snapshot.issue).toMatchObject({
+      type: 'external',
+      severity: 'S1',
+      code: 'PORTABLE_WORKSPACE_REPAIR_FAILED',
+    });
+    expect(gatewayManager.start).not.toHaveBeenCalled();
   });
 
   it('surfaces early data-root startup failures before other steps run', async () => {
