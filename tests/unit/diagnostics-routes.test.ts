@@ -22,12 +22,25 @@ vi.mock('@electron/api/route-utils', () => ({
 
 vi.mock('@electron/utils/logger', () => ({
   logger: {
+    getLogDir: () => 'F:/windows/data/uclaw/logs',
     readLogFile: (...args: unknown[]) => readLogFileMock(...args),
   },
 }));
 
 vi.mock('@electron/utils/paths', () => ({
   getOpenClawConfigDir: () => testOpenClawConfigDir,
+  getOpenClawStatus: () => ({ available: true, version: 'test-openclaw' }),
+}));
+
+vi.mock('@electron/utils/data-root', () => ({
+  getConfiguredDataRoot: () => 'F:/windows/data',
+}));
+
+vi.mock('electron', () => ({
+  app: {
+    getVersion: () => '0.4.0-test',
+    isPackaged: false,
+  },
 }));
 
 describe('handleDiagnosticsRoutes', () => {
@@ -162,5 +175,24 @@ describe('handleDiagnosticsRoutes', () => {
       gatewayLogTail?: string;
     };
     expect(payload.gatewayLogTail).toBe('only-one-line');
+  });
+
+  it('returns redacted support diagnostics package', async () => {
+    const { handleDiagnosticsRoutes } = await import('@electron/api/routes/diagnostics');
+    const handled = await handleDiagnosticsRoutes(
+      { method: 'GET' } as IncomingMessage,
+      {} as ServerResponse,
+      new URL('http://127.0.0.1:13210/api/diagnostics/support-package'),
+      {
+        gatewayManager: {
+          getStatus: () => ({ state: 'running', port: 18789 }),
+          getDiagnostics: () => ({ consecutiveRpcFailures: 0 }),
+        },
+      } as never,
+    );
+
+    expect(handled).toBe(true);
+    const payload = sendJsonMock.mock.calls.at(-1)?.[2] as { schema?: string };
+    expect(payload.schema).toBe('uclaw-support-diagnostics');
   });
 });

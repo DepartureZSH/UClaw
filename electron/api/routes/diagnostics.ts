@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { logger } from '../../utils/logger';
 import { getOpenClawConfigDir } from '../../utils/paths';
 import { buildGatewayHealthSummary } from '../../utils/gateway-health';
+import { buildSupportDiagnosticsPackage } from '../../main/diagnostics-package';
 import type { HostApiContext } from '../context';
 import { sendJson } from '../route-utils';
 import { buildChannelAccountsView, getChannelStatusDiagnostics } from './channels';
@@ -48,6 +49,24 @@ export async function handleDiagnosticsRoutes(
   url: URL,
   ctx: HostApiContext,
 ): Promise<boolean> {
+  if (url.pathname === '/api/diagnostics/support-package' && req.method === 'GET') {
+    try {
+      const pkg = await buildSupportDiagnosticsPackage({
+        storageDiagnostics: {
+          dataRoot: process.env.UCLAW_DATA_ROOT,
+          openclawDir: getOpenClawConfigDir(),
+          workspaceDir: process.env.UCLAW_WORKSPACE_DIR ?? null,
+        },
+        gatewayManager: ctx.gatewayManager,
+        repairActions: [],
+      });
+      sendJson(res, 200, pkg);
+    } catch (error) {
+      sendJson(res, 500, { success: false, error: String(error) });
+    }
+    return true;
+  }
+
   if (url.pathname === '/api/diagnostics/gateway-snapshot' && req.method === 'GET') {
     try {
       const { channels } = await buildChannelAccountsView(ctx, { probe: false });

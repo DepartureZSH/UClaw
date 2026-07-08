@@ -69,6 +69,7 @@ import { validateApiKeyWithProvider } from '../services/providers/provider-valid
 import { getKimiWebSearchStatus } from '../gateway/config-sync';
 import { appUpdater } from './updater';
 import { getCompanySupportLink } from './remote-config-sync';
+import { buildSupportDiagnosticsPackage, formatSupportDiagnosticsText } from './diagnostics-package';
 import { registerHostApiProxyHandlers } from './ipc/host-api-proxy';
 import {
   isLaunchAtStartupKey,
@@ -116,6 +117,9 @@ export function registerIpcHandlers(
   // App handlers
   registerAppHandlers();
 
+  // Diagnostics handlers
+  registerDiagnosticsHandlers(gatewayManager);
+
   // Settings handlers
   registerSettingsHandlers(gatewayManager);
 
@@ -161,6 +165,17 @@ function getStorageDiagnostics() {
     settingsPath: join(uclawDir, 'settings.json'),
     providerStorePath: join(uclawDir, 'uclaw-providers.json'),
   });
+}
+
+function registerDiagnosticsHandlers(gatewayManager: GatewayManager): void {
+  const collect = async () => await buildSupportDiagnosticsPackage({
+    storageDiagnostics: getStorageDiagnostics(),
+    gatewayManager,
+    repairActions: [],
+  });
+
+  ipcMain.handle('diagnostics:collect', async () => await collect());
+  ipcMain.handle('diagnostics:copyText', async () => formatSupportDiagnosticsText(await collect()));
 }
 
 function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {

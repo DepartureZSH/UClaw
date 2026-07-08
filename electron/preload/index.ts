@@ -28,6 +28,9 @@ const electronAPI = {
         'gateway:getControlUiUrl',
         'startup:getSnapshot',
         'startup:action',
+        // Diagnostics
+        'diagnostics:collect',
+        'diagnostics:copyText',
         // OpenClaw
         'openclaw:status',
         'openclaw:isReady',
