@@ -64,7 +64,7 @@ export function CompanyKeyPage() {
             <div>
               <h1 className="text-2xl font-semibold tracking-normal">填写公司密钥</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                UClaw 会使用公司密钥自动获取 AI 和联网搜索配置。
+                UClaw 会使用公司密钥同步企业配置。配置完成后，普通用户即可免配置使用。
               </p>
             </div>
           </div>
@@ -99,7 +99,7 @@ export function CompanyKeyPage() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                普通用户不需要选择工作目录，也不需要手动填写 API 地址或 API Key。
+                此页面用于制作人员初始化或重新绑定随盘工作台；普通用户无需选择工作目录、填写 API 地址或 API Key。
               </p>
             </div>
 

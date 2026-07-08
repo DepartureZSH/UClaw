@@ -239,6 +239,7 @@ function App() {
     <ErrorBoundary>
       <TooltipProvider delayDuration={300}>
         <Routes>
+          {/* Compatibility: old /setup links now open company-key provisioning, never legacy workspace Setup. */}
           <Route path="/setup/*" element={<CompanyKeyPage />} />
           <Route path="/company-key" element={<CompanyKeyPage />} />
 
