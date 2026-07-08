@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { invokeIpc } from '@/lib/api-client';
+import { collectDiagnosticsText } from '@/lib/diagnostics';
 import { runStartupAction } from '@/lib/startup';
 import type { StartupIssue } from '@/lib/startup';
 import type { ErrorRepairAction } from '@/lib/error-repair';
@@ -105,8 +106,9 @@ export function ErrorRepairPage({
     `time: ${new Date().toISOString()}`,
   ].filter(Boolean).join('\n\n'), [detail, issue, message, title]);
 
-  const copyDiagnostics = async (text = diagnosticsText) => {
-    await navigator.clipboard.writeText(text);
+  const copyDiagnostics = async () => {
+    const text = await collectDiagnosticsText().catch(() => diagnosticsText);
+    await navigator.clipboard.writeText(text || diagnosticsText);
     setCopied(true);
     setTimeout(() => setCopied(false), 1400);
   };

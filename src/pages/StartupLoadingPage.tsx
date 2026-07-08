@@ -14,6 +14,7 @@ import { TitleBar } from '@/components/layout/TitleBar';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { collectDiagnosticsText } from '@/lib/diagnostics';
 import { useStartupStore } from '@/stores/startup';
 import type { StartupAction, StartupSnapshot, StartupStepStatus } from '@/lib/startup';
 import uclawIcon from '@/assets/logo.svg';
@@ -82,8 +83,9 @@ export function StartupLoadingPage({ snapshot }: { snapshot: StartupSnapshot | n
   }, [snapshot]);
 
   const handleCopy = async () => {
-    if (!copyText) return;
-    await navigator.clipboard.writeText(copyText);
+    const text = await collectDiagnosticsText().catch(() => copyText);
+    if (!text && !copyText) return;
+    await navigator.clipboard.writeText(text || copyText);
     setCopied(true);
     setTimeout(() => setCopied(false), 1400);
   };
@@ -94,8 +96,11 @@ export function StartupLoadingPage({ snapshot }: { snapshot: StartupSnapshot | n
       return;
     }
     const result = await runAction({ id: action.id, payload: action.payload });
-    if (result?.copyText) {
-      await navigator.clipboard.writeText(result.copyText);
+    if (action.id === 'copy-diagnostics' || result?.copyText) {
+      const text = result?.copyText
+        || await collectDiagnosticsText().catch(() => copyText);
+      if (!text && !copyText) return;
+      await navigator.clipboard.writeText(text || copyText);
       setCopied(true);
       setTimeout(() => setCopied(false), 1400);
     }
@@ -187,7 +192,7 @@ export function StartupLoadingPage({ snapshot }: { snapshot: StartupSnapshot | n
                 ))}
                 <Button type="button" variant="outline" onClick={handleCopy}>
                   <Copy className="mr-2 h-4 w-4" />
-                  {copied ? '已复制' : '复制错误信息'}
+                  {copied ? '已复制' : '复制诊断信息'}
                 </Button>
               </div>
             )}

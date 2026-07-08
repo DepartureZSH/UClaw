@@ -4,6 +4,7 @@ import { ErrorRepairPage } from '@/pages/ErrorRepairPage';
 import type { StartupIssue } from '@/lib/startup';
 
 const invokeIpcMock = vi.hoisted(() => vi.fn());
+const collectDiagnosticsTextMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/api-client', () => ({
   invokeIpc: (...args: unknown[]) => invokeIpcMock(...args),
@@ -11,6 +12,10 @@ vi.mock('@/lib/api-client', () => ({
 
 vi.mock('@/lib/startup', () => ({
   runStartupAction: vi.fn(),
+}));
+
+vi.mock('@/lib/diagnostics', () => ({
+  collectDiagnosticsText: (...args: unknown[]) => collectDiagnosticsTextMock(...args),
 }));
 
 const issue: StartupIssue = {
@@ -24,6 +29,7 @@ const issue: StartupIssue = {
 describe('ErrorRepairPage', () => {
   beforeEach(() => {
     invokeIpcMock.mockReset();
+    collectDiagnosticsTextMock.mockReset();
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
       configurable: true,
@@ -53,7 +59,9 @@ describe('ErrorRepairPage', () => {
     expect(screen.getByRole('button', { name: /查看日志/ })).toBeVisible();
   });
 
-  it('copies diagnostics from the fallback page', async () => {
+  it('copies diagnostics from the shared support package', async () => {
+    collectDiagnosticsTextMock.mockResolvedValue('uclaw-support-diagnostics\nIPC_CHANNEL_UNAVAILABLE');
+
     render(
       <ErrorRepairPage
         message="页面与主进程通信失败"
@@ -66,7 +74,7 @@ describe('ErrorRepairPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /复制诊断信息/ }));
 
     await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('IPC_CHANNEL_UNAVAILABLE'));
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('uclaw-support-diagnostics\nIPC_CHANNEL_UNAVAILABLE');
     });
   });
 
