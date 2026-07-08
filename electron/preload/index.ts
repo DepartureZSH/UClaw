@@ -31,6 +31,7 @@ const electronAPI = {
         // Diagnostics
         'diagnostics:collect',
         'diagnostics:copyText',
+        'repair:action',
         // OpenClaw
         'openclaw:status',
         'openclaw:isReady',

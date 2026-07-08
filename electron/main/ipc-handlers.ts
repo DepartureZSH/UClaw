@@ -70,6 +70,7 @@ import { getKimiWebSearchStatus } from '../gateway/config-sync';
 import { appUpdater } from './updater';
 import { getCompanySupportLink } from './remote-config-sync';
 import { buildSupportDiagnosticsPackage, formatSupportDiagnosticsText } from './diagnostics-package';
+import { executeRepairAction, type MainRepairActionRequest } from './repair-actions';
 import { registerHostApiProxyHandlers } from './ipc/host-api-proxy';
 import {
   isLaunchAtStartupKey,
@@ -119,6 +120,9 @@ export function registerIpcHandlers(
 
   // Diagnostics handlers
   registerDiagnosticsHandlers(gatewayManager);
+
+  // Unified repair actions
+  registerRepairActionHandlers(gatewayManager);
 
   // Settings handlers
   registerSettingsHandlers(gatewayManager);
@@ -171,11 +175,35 @@ function registerDiagnosticsHandlers(gatewayManager: GatewayManager): void {
   const collect = async () => await buildSupportDiagnosticsPackage({
     storageDiagnostics: getStorageDiagnostics(),
     gatewayManager,
-    repairActions: [],
   });
 
   ipcMain.handle('diagnostics:collect', async () => await collect());
   ipcMain.handle('diagnostics:copyText', async () => formatSupportDiagnosticsText(await collect()));
+}
+
+function registerRepairActionHandlers(gatewayManager: GatewayManager): void {
+  const collectDiagnosticsText = async () => {
+    const pkg = await buildSupportDiagnosticsPackage({
+      storageDiagnostics: getStorageDiagnostics(),
+      gatewayManager,
+    });
+    return formatSupportDiagnosticsText(pkg);
+  };
+
+  ipcMain.handle('repair:action', async (_, request: MainRepairActionRequest) => (
+    await executeRepairAction(request, {
+      gatewayManager,
+      getDataRoot: () => getConfiguredDataRoot(),
+      getLogDir: () => logger.getLogDir(),
+      openPath: async (path) => await shell.openPath(path),
+      relaunch: () => {
+        app.relaunch();
+        app.quit();
+      },
+      quit: () => app.quit(),
+      collectDiagnosticsText,
+    })
+  ));
 }
 
 function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {

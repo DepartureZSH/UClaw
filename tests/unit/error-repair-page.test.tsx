@@ -5,6 +5,7 @@ import type { StartupIssue } from '@/lib/startup';
 
 const invokeIpcMock = vi.hoisted(() => vi.fn());
 const collectDiagnosticsTextMock = vi.hoisted(() => vi.fn());
+const runRepairActionMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/api-client', () => ({
   invokeIpc: (...args: unknown[]) => invokeIpcMock(...args),
@@ -16,6 +17,10 @@ vi.mock('@/lib/startup', () => ({
 
 vi.mock('@/lib/diagnostics', () => ({
   collectDiagnosticsText: (...args: unknown[]) => collectDiagnosticsTextMock(...args),
+}));
+
+vi.mock('@/lib/repair-actions', () => ({
+  runRepairAction: (...args: unknown[]) => runRepairActionMock(...args),
 }));
 
 const issue: StartupIssue = {
@@ -30,6 +35,7 @@ describe('ErrorRepairPage', () => {
   beforeEach(() => {
     invokeIpcMock.mockReset();
     collectDiagnosticsTextMock.mockReset();
+    runRepairActionMock.mockReset();
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
       configurable: true,
@@ -60,7 +66,7 @@ describe('ErrorRepairPage', () => {
   });
 
   it('copies diagnostics from the shared support package', async () => {
-    collectDiagnosticsTextMock.mockResolvedValue('uclaw-support-diagnostics\nIPC_CHANNEL_UNAVAILABLE');
+    runRepairActionMock.mockResolvedValue({ success: true, copyText: 'uclaw-support-diagnostics\nIPC_CHANNEL_UNAVAILABLE' });
 
     render(
       <ErrorRepairPage
@@ -74,15 +80,13 @@ describe('ErrorRepairPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /复制诊断信息/ }));
 
     await waitFor(() => {
+      expect(runRepairActionMock).toHaveBeenCalledWith({ id: 'copy-diagnostics' });
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('uclaw-support-diagnostics\nIPC_CHANNEL_UNAVAILABLE');
     });
   });
 
-  it('opens the log folder through main-process IPC', async () => {
-    invokeIpcMock.mockImplementation(async (channel: string) => {
-      if (channel === 'log:getDir') return 'E:/logs';
-      return undefined;
-    });
+  it('opens the log folder through the unified repair action', async () => {
+    runRepairActionMock.mockResolvedValue({ success: true });
 
     render(
       <ErrorRepairPage
@@ -95,8 +99,7 @@ describe('ErrorRepairPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /查看日志/ }));
 
     await waitFor(() => {
-      expect(invokeIpcMock).toHaveBeenCalledWith('log:getDir');
-      expect(invokeIpcMock).toHaveBeenCalledWith('shell:openPath', 'E:/logs');
+      expect(runRepairActionMock).toHaveBeenCalledWith({ id: 'open-log-folder' });
     });
   });
 });

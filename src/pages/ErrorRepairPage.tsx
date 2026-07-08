@@ -13,9 +13,8 @@ import { TitleBar } from '@/components/layout/TitleBar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { invokeIpc } from '@/lib/api-client';
 import { collectDiagnosticsText } from '@/lib/diagnostics';
-import { runStartupAction } from '@/lib/startup';
+import { runRepairAction } from '@/lib/repair-actions';
 import type { StartupIssue } from '@/lib/startup';
 import type { ErrorRepairAction } from '@/lib/error-repair';
 
@@ -55,12 +54,6 @@ function actionIcon(id: ErrorRepairAction['id']) {
   if (id.includes('log')) return <FolderOpen className="mr-2 h-4 w-4" />;
   if (id.includes('quit')) return <Power className="mr-2 h-4 w-4" />;
   return <Wrench className="mr-2 h-4 w-4" />;
-}
-
-async function openPath(path: string): Promise<void> {
-  if (path) {
-    await invokeIpc('shell:openPath', path);
-  }
 }
 
 async function clearRendererTemporaryCache(): Promise<void> {
@@ -107,7 +100,9 @@ export function ErrorRepairPage({
   ].filter(Boolean).join('\n\n'), [detail, issue, message, title]);
 
   const copyDiagnostics = async () => {
-    const text = await collectDiagnosticsText().catch(() => diagnosticsText);
+    const text = await runRepairAction({ id: 'copy-diagnostics' })
+      .then((result) => result.copyText)
+      .catch(async () => await collectDiagnosticsText().catch(() => diagnosticsText));
     await navigator.clipboard.writeText(text || diagnosticsText);
     setCopied(true);
     setTimeout(() => setCopied(false), 1400);
@@ -124,36 +119,18 @@ export function ErrorRepairPage({
           window.location.reload();
           break;
         case 'relaunch-app':
-          await invokeIpc('app:relaunch');
-          break;
         case 'restart-gateway':
-          await invokeIpc('gateway:restart');
+        case 'open-log-folder':
+        case 'open-data-root':
+        case 'quit-app':
+          await runRepairAction({ id: action.id });
           break;
-        case 'open-log-folder': {
-          try {
-            await openPath(await invokeIpc<string>('log:getDir'));
-          } catch {
-            await runStartupAction({ id: 'open-log-folder' });
-          }
-          break;
-        }
-        case 'open-data-root': {
-          try {
-            await openPath(await invokeIpc<string>('app:getDataRoot'));
-          } catch {
-            await runStartupAction({ id: 'open-data-root' });
-          }
-          break;
-        }
         case 'copy-diagnostics':
           await copyDiagnostics();
           break;
         case 'clear-render-cache-and-reload':
           await clearRendererTemporaryCache();
           window.location.reload();
-          break;
-        case 'quit-app':
-          await invokeIpc('app:quit');
           break;
         default:
           break;

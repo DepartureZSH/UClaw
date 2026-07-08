@@ -8,5 +8,6 @@ describe('preload IPC allowlist', () => {
 
     expect(source).toContain("'diagnostics:collect'");
     expect(source).toContain("'diagnostics:copyText'");
+    expect(source).toContain("'repair:action'");
   });
 });
