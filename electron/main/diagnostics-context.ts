@@ -7,6 +7,7 @@ export interface StartupDiagnosticsProvider {
 }
 
 let startupDiagnosticsProvider: StartupDiagnosticsProvider | null = null;
+let mainRepairActionRecords: RepairActionRecord[] = [];
 
 export function setStartupDiagnosticsProvider(provider: StartupDiagnosticsProvider): void {
   startupDiagnosticsProvider = provider;
@@ -18,4 +19,19 @@ export function clearStartupDiagnosticsProvider(): void {
 
 export function getStartupDiagnosticsProvider(): StartupDiagnosticsProvider | null {
   return startupDiagnosticsProvider;
+}
+
+export function recordMainRepairAction(record: Omit<RepairActionRecord, 'at'>): void {
+  mainRepairActionRecords.push({ ...record, at: new Date().toISOString() });
+  if (mainRepairActionRecords.length > 50) {
+    mainRepairActionRecords = mainRepairActionRecords.slice(-50);
+  }
+}
+
+export function getMainRepairActionRecords(): RepairActionRecord[] {
+  return mainRepairActionRecords.map((record) => ({ ...record }));
+}
+
+export function clearMainRepairActionRecords(): void {
+  mainRepairActionRecords = [];
 }

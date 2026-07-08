@@ -5,7 +5,7 @@ import { getConfiguredDataRoot } from '../utils/data-root';
 import { logger } from '../utils/logger';
 import { getOpenClawConfigDir, getOpenClawStatus } from '../utils/paths';
 import { redactDiagnosticsValue } from '../utils/diagnostics-redaction';
-import { getStartupDiagnosticsProvider } from './diagnostics-context';
+import { getMainRepairActionRecords, getStartupDiagnosticsProvider } from './diagnostics-context';
 
 const DEFAULT_TAIL_LINES = 200;
 
@@ -117,7 +117,10 @@ export async function buildSupportDiagnosticsPackage(input: {
   const uclawDir = input.storageDiagnostics.uclawDir || join(dataRoot, 'uclaw');
   const startupProvider = getStartupDiagnosticsProvider();
   const startupSnapshot = input.startupSnapshot ?? startupProvider?.getSnapshot();
-  const repairActions = input.repairActions ?? startupProvider?.getRepairActionRecords() ?? [];
+  const repairActions = input.repairActions ?? [
+    ...(startupProvider?.getRepairActionRecords() ?? []),
+    ...getMainRepairActionRecords(),
+  ];
   const pkg: SupportDiagnosticsPackage = {
     schema: 'uclaw-support-diagnostics',
     version: 1,

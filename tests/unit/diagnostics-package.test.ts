@@ -26,7 +26,13 @@ vi.mock('@electron/utils/logger', () => ({
 describe('support diagnostics package', () => {
   it('uses the registered startup diagnostics provider when explicit startup input is absent', async () => {
     const { buildSupportDiagnosticsPackage } = await import('@electron/main/diagnostics-package');
-    const { clearStartupDiagnosticsProvider, setStartupDiagnosticsProvider } = await import('@electron/main/diagnostics-context');
+    const {
+      clearMainRepairActionRecords,
+      clearStartupDiagnosticsProvider,
+      recordMainRepairAction,
+      setStartupDiagnosticsProvider,
+    } = await import('@electron/main/diagnostics-context');
+    clearMainRepairActionRecords();
 
     setStartupDiagnosticsProvider({
       getSnapshot: () => ({
@@ -41,6 +47,7 @@ describe('support diagnostics package', () => {
         { id: 'restart-gateway', status: 'started', at: '2026-07-08T00:00:00.000Z' },
       ],
     });
+    recordMainRepairAction({ id: 'open-log-folder', status: 'success' });
 
     try {
       const pkg = await buildSupportDiagnosticsPackage({
@@ -56,9 +63,11 @@ describe('support diagnostics package', () => {
       });
       expect(pkg.repairActions).toEqual([
         expect.objectContaining({ id: 'restart-gateway', status: 'started' }),
+        expect.objectContaining({ id: 'open-log-folder', status: 'success' }),
       ]);
     } finally {
       clearStartupDiagnosticsProvider();
+      clearMainRepairActionRecords();
     }
   });
 

@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 describe('repair actions', () => {
   it('executes main-owned repair actions through injected dependencies', async () => {
     const { executeRepairAction } = await import('@electron/main/repair-actions');
+    const { clearMainRepairActionRecords, getMainRepairActionRecords } = await import('@electron/main/diagnostics-context');
+    clearMainRepairActionRecords();
     const gatewayManager = { restart: vi.fn().mockResolvedValue(undefined) };
     const openPath = vi.fn().mockResolvedValue('');
     const relaunch = vi.fn();
@@ -31,10 +33,19 @@ describe('repair actions', () => {
     expect(copyResult).toEqual({ success: true, copyText: 'uclaw-support-diagnostics' });
     expect(relaunch).toHaveBeenCalledTimes(1);
     expect(quit).toHaveBeenCalledTimes(1);
+    expect(getMainRepairActionRecords()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'restart-gateway', status: 'started' }),
+        expect.objectContaining({ id: 'restart-gateway', status: 'success' }),
+        expect.objectContaining({ id: 'copy-diagnostics', status: 'success' }),
+      ]),
+    );
   });
 
   it('rejects unsupported repair actions', async () => {
     const { executeRepairAction } = await import('@electron/main/repair-actions');
+    const { clearMainRepairActionRecords, getMainRepairActionRecords } = await import('@electron/main/diagnostics-context');
+    clearMainRepairActionRecords();
 
     await expect(
       executeRepairAction({ id: 'unknown-action' }, {
@@ -47,5 +58,9 @@ describe('repair actions', () => {
         collectDiagnosticsText: vi.fn(),
       }),
     ).rejects.toThrow('Unsupported repair action');
+    expect(getMainRepairActionRecords()).toEqual([
+      expect.objectContaining({ id: 'unknown-action', status: 'started' }),
+      expect.objectContaining({ id: 'unknown-action', status: 'error' }),
+    ]);
   });
 });
