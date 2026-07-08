@@ -1,29 +1,28 @@
 import { closeElectronApp, expect, test } from './fixtures/electron';
 
 test.describe('UClaw Electron smoke flows', () => {
-  test('shows the setup wizard on a fresh profile', async ({ page }) => {
-    await expect(page.getByTestId('setup-page')).toBeVisible();
-    await expect(page.getByTestId('setup-welcome-step')).toBeVisible();
-    await expect(page.getByTestId('setup-skip-button')).toBeVisible();
+  test('shows the company key page on an unconfigured public package', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: '填写公司密钥' })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('textbox', { name: '公司密钥' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '保存并同步配置' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '联系客服' })).toBeVisible();
+    await expect(page.getByTestId('setup-page')).toHaveCount(0);
   });
 
-  test('can skip setup and navigate to the models page', async ({ page }) => {
-    await expect(page.getByTestId('setup-page')).toBeVisible();
-    await page.getByTestId('setup-skip-button').click();
-
-    await expect(page.getByTestId('main-layout')).toBeVisible();
-    await page.getByTestId('sidebar-nav-models').click();
-
-    await expect(page.getByTestId('models-page')).toBeVisible();
-    await expect(page.getByTestId('models-page-title')).toBeVisible();
-    await expect(page.getByTestId('providers-settings')).toBeVisible();
+  test('routes legacy setup links to company key provisioning', async ({ page }) => {
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/setup');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await expect(page.getByRole('heading', { name: '填写公司密钥' })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('setup-page')).toHaveCount(0);
   });
 
-  test('persists skipped setup across relaunch for the same isolated profile', async ({ electronApp, launchElectronApp }) => {
+  test('keeps the legacy setup wizard removed across relaunch for the same isolated profile', async ({ electronApp, launchElectronApp }) => {
     const firstWindow = await electronApp.firstWindow();
     await firstWindow.waitForLoadState('domcontentloaded');
-    await firstWindow.getByTestId('setup-skip-button').click();
-    await expect(firstWindow.getByTestId('main-layout')).toBeVisible();
+    await expect(firstWindow.getByRole('heading', { name: '填写公司密钥' })).toBeVisible({ timeout: 30_000 });
+    await expect(firstWindow.getByTestId('setup-page')).toHaveCount(0);
 
     await closeElectronApp(electronApp);
 
@@ -32,7 +31,7 @@ test.describe('UClaw Electron smoke flows', () => {
       const relaunchedWindow = await relaunchedApp.firstWindow();
       await relaunchedWindow.waitForLoadState('domcontentloaded');
 
-      await expect(relaunchedWindow.getByTestId('main-layout')).toBeVisible();
+      await expect(relaunchedWindow.getByRole('heading', { name: '填写公司密钥' })).toBeVisible({ timeout: 30_000 });
       await expect(relaunchedWindow.getByTestId('setup-page')).toHaveCount(0);
     } finally {
       await closeElectronApp(relaunchedApp);

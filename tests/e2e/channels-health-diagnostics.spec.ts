@@ -179,7 +179,7 @@ test.describe('Channels health diagnostics', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (window as any).__copiedDiagnostics as string;
     });
-    expect(copied).toContain('"platform": "darwin"');
+    expect(copied).toContain('uclaw-support-diagnostics');
     } finally {
       await closeElectronApp(electronApp);
     }
