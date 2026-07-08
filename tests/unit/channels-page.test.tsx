@@ -7,6 +7,7 @@ const subscribeHostEventMock = vi.fn();
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
 const toastWarningMock = vi.fn();
+const collectDiagnosticsTextMock = vi.fn();
 
 const { gatewayState } = vi.hoisted(() => ({
   gatewayState: {
@@ -24,6 +25,10 @@ vi.mock('@/lib/host-api', () => ({
 
 vi.mock('@/lib/host-events', () => ({
   subscribeHostEvent: (...args: unknown[]) => subscribeHostEventMock(...args),
+}));
+
+vi.mock('@/lib/diagnostics', () => ({
+  collectDiagnosticsText: (...args: unknown[]) => collectDiagnosticsTextMock(...args),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -58,6 +63,9 @@ describe('Channels page status refresh', () => {
       configurable: true,
     });
     gatewayState.status = { state: 'running', port: 18789 };
+    collectDiagnosticsTextMock.mockResolvedValue(
+      'uclaw-support-diagnostics\nstatus: ready\nchannelHealth: degraded',
+    );
     hostApiFetchMock.mockImplementation(async (path: string) => {
       if (path === '/api/channels/accounts') {
         return {
@@ -396,7 +404,7 @@ describe('Channels page status refresh', () => {
     expect(appSecretInput).toHaveValue('secret_test_value');
   });
 
-  it('shows degraded gateway banner and copies diagnostics snapshot', async () => {
+  it('shows degraded gateway banner and copies unified diagnostics text', async () => {
     subscribeHostEventMock.mockImplementation(() => vi.fn());
     const writeTextMock = vi.mocked(navigator.clipboard.writeText);
 
@@ -437,22 +445,6 @@ describe('Channels page status refresh', () => {
         };
       }
 
-      if (path === '/api/diagnostics/gateway-snapshot') {
-        return {
-          capturedAt: 123,
-          platform: 'darwin',
-          gateway: {
-            state: 'degraded',
-            reasons: ['channels_status_timeout'],
-            consecutiveHeartbeatMisses: 1,
-          },
-          channels: [],
-          uclawLogTail: 'uclaw',
-          gatewayLogTail: 'gateway',
-          gatewayErrLogTail: '',
-        };
-      }
-
       if (path === '/api/gateway/restart' && init?.method === 'POST') {
         return { success: true };
       }
@@ -468,9 +460,10 @@ describe('Channels page status refresh', () => {
     fireEvent.click(screen.getByTestId('channels-copy-diagnostics'));
 
     await waitFor(() => {
-      expect(hostApiFetchMock).toHaveBeenCalledWith('/api/diagnostics/gateway-snapshot');
-      expect(writeTextMock).toHaveBeenCalledWith(expect.stringContaining('"platform": "darwin"'));
+      expect(collectDiagnosticsTextMock).toHaveBeenCalledTimes(1);
+      expect(writeTextMock).toHaveBeenCalledWith(expect.stringContaining('uclaw-support-diagnostics'));
     });
+    expect(hostApiFetchMock).not.toHaveBeenCalledWith('/api/diagnostics/gateway-snapshot');
   });
 
   it('surfaces diagnostics fetch failure payloads instead of caching them as snapshots', async () => {

@@ -7,6 +7,7 @@ import { useGatewayStore } from '@/stores/gateway';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { hostApiFetch } from '@/lib/host-api';
 import { subscribeHostEvent } from '@/lib/host-events';
+import { collectDiagnosticsText } from '@/lib/diagnostics';
 import { ChannelConfigModal } from '@/components/channels/ChannelConfigModal';
 import { cn } from '@/lib/utils';
 import {
@@ -368,8 +369,14 @@ export function Channels() {
   const handleCopyDiagnostics = async () => {
     setDiagnosticsLoading(true);
     try {
-      const snapshot = await fetchDiagnosticsSnapshot();
-      await navigator.clipboard.writeText(JSON.stringify(snapshot, null, 2));
+      let text: string;
+      try {
+        text = await collectDiagnosticsText();
+      } catch {
+        const snapshot = await fetchDiagnosticsSnapshot();
+        text = JSON.stringify(snapshot, null, 2);
+      }
+      await navigator.clipboard.writeText(text);
       toast.success(t('health.diagnosticsCopied'));
     } catch (copyError) {
       toast.error(t('health.diagnosticsCopyFailed', { error: String(copyError) }));
