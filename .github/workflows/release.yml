@@ -1,5 +1,5 @@
 # UClaw Release Workflow
-# Builds and publishes releases for macOS, Windows, and Linux via GitHub Releases
+# Builds and publishes releases for macOS and Windows via GitHub Releases
 
 name: Release
 
@@ -20,14 +20,13 @@ permissions:
 jobs:
   release:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
             platform: mac
           - os: windows-latest
             platform: win
-          - os: ubuntu-latest
-            platform: linux
 
     runs-on: ${{ matrix.os }}
 
@@ -57,10 +56,6 @@ jobs:
         if: matrix.platform == 'win'
         run: pnpm run uv:download:win
 
-      - name: Download uv binaries (Linux)
-        if: matrix.platform == 'linux'
-        run: pnpm run uv:download:linux
-
       - name: Free disk space (macOS)
         if: matrix.platform == 'mac'
         run: |
@@ -76,19 +71,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ulimit -n 65536
-          pnpm run package:mac
+          pnpm run package:mac:portable
 
       - name: Build (Windows)
         if: matrix.platform == 'win'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm run package:win
-
-      - name: Build (Linux)
-        if: matrix.platform == 'linux'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm run package:linux
+        run: pnpm run package:win:portable
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
