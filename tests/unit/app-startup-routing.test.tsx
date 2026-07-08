@@ -126,4 +126,16 @@ describe('App startup routing', () => {
     expect(screen.getByText('填写公司密钥')).toBeInTheDocument();
     expect(screen.queryByText('选择工作区')).not.toBeInTheDocument();
   });
+
+  it('renders the main app when startup completes with a warning', async () => {
+    await renderApp('/', makeStartupSnapshot({
+      status: 'warning',
+      currentStep: 'gateway-start',
+      progress: 100,
+      message: '启动完成，但存在可恢复提示',
+    }));
+
+    expect(screen.getByTestId('main-layout')).toBeInTheDocument();
+    expect(screen.getByText('Chat page')).toBeInTheDocument();
+  });
 });

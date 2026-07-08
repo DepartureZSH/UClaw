@@ -108,14 +108,14 @@ function App() {
   // Initialize Gateway connection on mount
   useEffect(() => {
     if (!storageDiagnosticsLoaded) return;
-    if (startupSnapshot?.status !== 'ready') return;
+    if (startupSnapshot?.status !== 'ready' && startupSnapshot?.status !== 'warning') return;
     initGateway();
   }, [initGateway, storageDiagnosticsLoaded, startupSnapshot?.status]);
 
   // Initialize provider snapshot on mount
   useEffect(() => {
     if (!storageDiagnosticsLoaded) return;
-    if (startupSnapshot?.status !== 'ready') return;
+    if (startupSnapshot?.status !== 'ready' && startupSnapshot?.status !== 'warning') return;
     initProviders();
   }, [initProviders, storageDiagnosticsLoaded, startupSnapshot?.status]);
 
@@ -182,6 +182,7 @@ function App() {
 
   const extraRoutes = rendererExtensionRegistry.getExtraRoutes();
   const isCompanyKeyRoute = location.pathname.startsWith('/company-key') || location.pathname.startsWith('/setup');
+  const startupAllowsMain = startupSnapshot?.status === 'ready' || startupSnapshot?.status === 'warning';
 
   if (globalError) {
     const model = classifyRendererError(globalError.error);
@@ -213,7 +214,7 @@ function App() {
     );
   }
 
-  if (isCompanyKeyRoute && startupSnapshot?.status !== 'ready') {
+  if (isCompanyKeyRoute && !startupAllowsMain) {
     return (
       <ErrorBoundary>
         <TooltipProvider delayDuration={300}>
@@ -224,7 +225,7 @@ function App() {
     );
   }
 
-  if (startupSnapshot?.status !== 'ready') {
+  if (!startupAllowsMain) {
     return (
       <ErrorBoundary>
         <TooltipProvider delayDuration={300}>
