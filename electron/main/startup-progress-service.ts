@@ -18,6 +18,7 @@ import { logger } from '../utils/logger';
 import { resolveStartupRuntimeConfig, type StartupRuntimeConfig } from '../utils/startup-config';
 import { resolvePortableWorkspaceDir, resolveStartupWorkspaceState, type StartupWorkspaceState } from './workspace-startup';
 import { syncRemoteConfig } from './remote-config-sync';
+import type { RepairActionRecord } from './diagnostics-package';
 import type {
   StartupAction,
   StartupActionRequest,
@@ -434,6 +435,7 @@ export class StartupProgressService {
   private lastSettings: AppSettings | null = null;
   private lastProviderWarning: ProviderWarning | null = null;
   private startupConfig: StartupRuntimeConfig = resolveStartupRuntimeConfig();
+  private repairActions: RepairActionRecord[] = [];
 
   constructor(
     private readonly options: {
@@ -455,6 +457,18 @@ export class StartupProgressService {
       steps: this.snapshot.steps.map((step) => ({ ...step })),
       actions: this.snapshot.actions.map((action) => ({ ...action })),
     };
+  }
+
+  getRepairActionRecords(): RepairActionRecord[] {
+    return this.repairActions.map((record) => ({ ...record }));
+  }
+
+  handleActionForTest(request: StartupActionRequest): Promise<StartupActionResult> {
+    return this.handleAction(request);
+  }
+
+  getRepairActionRecordsForTest(): RepairActionRecord[] {
+    return this.getRepairActionRecords();
   }
 
   async runInitialStartup(context: StartupContext): Promise<StartupSnapshot> {
@@ -1016,6 +1030,31 @@ export class StartupProgressService {
   }
 
   private async handleAction(request: StartupActionRequest): Promise<StartupActionResult> {
+    const label = this.snapshot.actions.find((action) => action.id === request.id)?.label;
+    this.recordRepairAction({ id: request.id, label, status: 'started' });
+    try {
+      const result = await this.executeAction(request);
+      this.recordRepairAction({ id: request.id, label, status: 'success' });
+      return result;
+    } catch (error) {
+      this.recordRepairAction({
+        id: request.id,
+        label,
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  private recordRepairAction(record: Omit<RepairActionRecord, 'at'>): void {
+    this.repairActions.push({ ...record, at: new Date().toISOString() });
+    if (this.repairActions.length > 50) {
+      this.repairActions = this.repairActions.slice(-50);
+    }
+  }
+
+  private async executeAction(request: StartupActionRequest): Promise<StartupActionResult> {
     switch (request.id) {
       case 'retry-current-step':
       case 'rescan-provider-config':

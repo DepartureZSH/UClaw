@@ -206,6 +206,29 @@ describe('StartupProgressService', () => {
     expect(gatewayManager.start).not.toHaveBeenCalled();
   });
 
+  it('records startup repair action attempts and results', async () => {
+    const { StartupProgressService } = await import('@electron/main/startup-progress-service');
+    const gatewayManager = new FakeGatewayManager();
+    gatewayManager.restart.mockResolvedValue(undefined);
+    const service = new StartupProgressService({
+      gatewayManager: gatewayManager as never,
+      getMainWindow: () => null,
+    });
+
+    await service.runInitialStartup({
+      isE2EMode: false,
+      storageDiagnostics: { isAppTranslocated: false },
+    });
+    await service.handleActionForTest({ id: 'restart-gateway' });
+
+    expect(service.getRepairActionRecordsForTest()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'restart-gateway', status: 'started' }),
+        expect.objectContaining({ id: 'restart-gateway', status: 'success' }),
+      ]),
+    );
+  });
+
   it('continues startup when macOS App Translocation is detected', async () => {
     const { StartupProgressService } = await import('@electron/main/startup-progress-service');
     const gatewayManager = new FakeGatewayManager();
