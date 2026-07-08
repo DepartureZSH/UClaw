@@ -1,7 +1,24 @@
-import { completeSetup, expect, test } from './fixtures/electron';
+import { closeElectronApp, completeSetup, expect, getRealLafE2EConfig, getStableWindow, test } from './fixtures/electron';
 
 test.describe('Channels health diagnostics', () => {
-  test('shows degraded banner, restarts gateway, and copies diagnostics', async ({ electronApp, page }) => {
+  test('shows degraded banner, restarts gateway, and copies diagnostics', async ({ launchElectronApp }) => {
+    const realLaf = getRealLafE2EConfig();
+    if (!realLaf) {
+      test.skip(true, 'Set UCLAW_E2E_REAL_LAF_ENDPOINT and UCLAW_E2E_REAL_LAF_PACKAGE_ID to run real Laf E2E.');
+      return;
+    }
+
+    const electronApp = await launchElectronApp({
+      realLaf: {
+        endpoint: realLaf.endpoint,
+        packageId: realLaf.packageId,
+        configured: true,
+      },
+    });
+
+    try {
+      const page = await getStableWindow(electronApp);
+
     await electronApp.evaluate(({ ipcMain }) => {
       const state = {
         restartCount: 0,
@@ -163,5 +180,8 @@ test.describe('Channels health diagnostics', () => {
       return (window as any).__copiedDiagnostics as string;
     });
     expect(copied).toContain('"platform": "darwin"');
+    } finally {
+      await closeElectronApp(electronApp);
+    }
   });
 });

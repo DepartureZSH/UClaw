@@ -1,12 +1,17 @@
 import electronBinaryPath from 'electron';
 import { _electron as electron, expect, test as base, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 type LaunchElectronOptions = {
   skipSetup?: boolean;
+  realLaf?: {
+    endpoint: string;
+    packageId: string;
+    configured?: boolean;
+  };
 };
 
 type IpcMockConfig = {
@@ -25,6 +30,31 @@ type ElectronFixtures = {
 
 const repoRoot = resolve(process.cwd());
 const electronEntry = join(repoRoot, 'dist-electron/main/index.js');
+
+export type RealLafE2EConfig = {
+  endpoint: string;
+  packageId: string;
+};
+
+export function getRealLafE2EConfig(): RealLafE2EConfig | null {
+  const endpoint = process.env.UCLAW_E2E_REAL_LAF_ENDPOINT?.trim();
+  const packageId = process.env.UCLAW_E2E_REAL_LAF_PACKAGE_ID?.trim();
+  if (!endpoint || !packageId) return null;
+  return { endpoint, packageId };
+}
+
+async function seedConfiguredCompanyKey(dataRootDir: string, packageId: string): Promise<void> {
+  const uclawDir = join(dataRootDir, 'uclaw');
+  await mkdir(uclawDir, { recursive: true });
+  await writeFile(
+    join(uclawDir, 'settings.json'),
+    `${JSON.stringify({
+      companyKey: packageId,
+      setupComplete: true,
+    }, null, 2)}\n`,
+    'utf8',
+  );
+}
 
 async function allocatePort(): Promise<number> {
   return await new Promise((resolvePort, reject) => {
@@ -120,6 +150,9 @@ async function launchUClawElectron(
   options: LaunchElectronOptions = {},
 ): Promise<ElectronApplication> {
   const hostApiPort = await allocatePort();
+  if (options.realLaf?.configured) {
+    await seedConfiguredCompanyKey(dataRootDir, options.realLaf.packageId);
+  }
   const electronEnv = process.platform === 'linux'
     ? { ELECTRON_DISABLE_SANDBOX: '1' }
     : {};
@@ -136,6 +169,7 @@ async function launchUClawElectron(
       XDG_CONFIG_HOME: join(homeDir, '.config'),
       UCLAW_E2E: '1',
       ...(options.skipSetup ? { UCLAW_E2E_SKIP_SETUP: '1' } : {}),
+      ...(options.realLaf?.endpoint ? { UCLAW_REMOTE_CONFIG_ENDPOINT: options.realLaf.endpoint } : {}),
       UCLAW_PORT_UCLAW_HOST_API: String(hostApiPort),
     },
     timeout: 90_000,

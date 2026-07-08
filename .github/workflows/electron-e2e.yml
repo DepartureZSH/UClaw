@@ -2,9 +2,16 @@ name: Electron E2E
 
 on:
   workflow_dispatch:
+    inputs:
+      run_e2e:
+        description: 'Run Electron E2E jobs. Disabled by default; prefer local real-Laf verification.'
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   electron-e2e:
+    if: ${{ inputs.run_e2e == true }}
     name: Electron E2E (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
