@@ -22,6 +22,7 @@ describe('classifyRendererError', () => {
       code: 'IPC_CHANNEL_UNAVAILABLE',
     });
     expect(result.actions[0]?.id).toBe('relaunch-app');
+    expect(result.actions.map((action) => action.id)).toContain('export-diagnostics');
   });
 
   it('maps renderer cache quota failures to temporary cache repair', () => {
@@ -33,6 +34,7 @@ describe('classifyRendererError', () => {
       code: 'RENDER_CACHE_QUOTA_EXCEEDED',
     });
     expect(result.actions[0]?.id).toBe('clear-render-cache-and-reload');
+    expect(result.actions.map((action) => action.id)).toContain('export-diagnostics');
   });
 
   it('keeps unknown renderer failures as S1 internal blockers', () => {
@@ -43,5 +45,6 @@ describe('classifyRendererError', () => {
       severity: 'S1',
       code: 'RENDER_UNKNOWN_ERROR',
     });
+    expect(result.actions.map((action) => action.id)).toContain('export-diagnostics');
   });
 });

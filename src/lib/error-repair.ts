@@ -8,6 +8,7 @@ export type ErrorRepairActionId =
   | 'open-log-folder'
   | 'open-data-root'
   | 'copy-diagnostics'
+  | 'export-diagnostics'
   | 'clear-render-cache-and-reload'
   | 'quit-app';
 
@@ -84,6 +85,7 @@ export function classifyRendererError(error: unknown): ErrorRepairModel {
         { id: 'reload-page', label: '重新加载页面', variant: 'primary' },
         { id: 'relaunch-app', label: '重启 UClaw' },
         { id: 'copy-diagnostics', label: '复制诊断信息' },
+        { id: 'export-diagnostics', label: '导出诊断包' },
       ],
     };
   }
@@ -106,6 +108,7 @@ export function classifyRendererError(error: unknown): ErrorRepairModel {
         { id: 'relaunch-app', label: '重启 UClaw', variant: 'primary' },
         { id: 'open-log-folder', label: '查看日志' },
         { id: 'copy-diagnostics', label: '复制诊断信息' },
+        { id: 'export-diagnostics', label: '导出诊断包' },
       ],
     };
   }
@@ -128,6 +131,7 @@ export function classifyRendererError(error: unknown): ErrorRepairModel {
         { id: 'clear-render-cache-and-reload', label: '清理临时缓存并重载', variant: 'primary' },
         { id: 'open-data-root', label: '打开数据目录' },
         { id: 'copy-diagnostics', label: '复制诊断信息' },
+        { id: 'export-diagnostics', label: '导出诊断包' },
       ],
     };
   }
@@ -152,6 +156,7 @@ export function classifyRendererError(error: unknown): ErrorRepairModel {
         { id: 'reload-page', label: '重新加载页面' },
         { id: 'open-log-folder', label: '查看日志' },
         { id: 'copy-diagnostics', label: '复制诊断信息' },
+        { id: 'export-diagnostics', label: '导出诊断包' },
       ],
     };
   }
@@ -175,6 +180,7 @@ export function classifyRendererError(error: unknown): ErrorRepairModel {
         { id: 'open-data-root', label: '打开数据目录', variant: 'primary' },
         { id: 'open-log-folder', label: '查看日志' },
         { id: 'copy-diagnostics', label: '复制诊断信息' },
+        { id: 'export-diagnostics', label: '导出诊断包' },
       ],
     };
   }
@@ -192,6 +198,7 @@ export function classifyRendererError(error: unknown): ErrorRepairModel {
       actions: [
         { id: 'retry-render', label: '重试页面', variant: 'primary' },
         { id: 'copy-diagnostics', label: '复制诊断信息' },
+        { id: 'export-diagnostics', label: '导出诊断包' },
       ],
     };
   }
@@ -210,6 +217,7 @@ export function classifyRendererError(error: unknown): ErrorRepairModel {
       { id: 'reload-page', label: '重新加载页面' },
       { id: 'open-log-folder', label: '查看日志' },
       { id: 'copy-diagnostics', label: '复制诊断信息' },
+      { id: 'export-diagnostics', label: '导出诊断包' },
     ],
   };
 }

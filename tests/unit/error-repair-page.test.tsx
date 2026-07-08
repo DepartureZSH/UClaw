@@ -102,4 +102,22 @@ describe('ErrorRepairPage', () => {
       expect(runRepairActionMock).toHaveBeenCalledWith({ id: 'open-log-folder' });
     });
   });
+
+  it('exports diagnostics through the unified repair action', async () => {
+    runRepairActionMock.mockResolvedValue({ success: true, filePath: 'F:/data/uclaw/diagnostics/uclaw-diagnostics.txt' });
+
+    render(
+      <ErrorRepairPage
+        message="页面与主进程通信失败"
+        issue={issue}
+        actions={[{ id: 'export-diagnostics', label: '导出诊断包' }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /导出诊断包/ }));
+
+    await waitFor(() => {
+      expect(runRepairActionMock).toHaveBeenCalledWith({ id: 'export-diagnostics' });
+    });
+  });
 });

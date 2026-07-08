@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('repair actions', () => {
@@ -40,6 +43,30 @@ describe('repair actions', () => {
         expect.objectContaining({ id: 'copy-diagnostics', status: 'success' }),
       ]),
     );
+  });
+
+  it('exports a support diagnostics text file and opens its folder', async () => {
+    const { executeRepairAction } = await import('@electron/main/repair-actions');
+    const dataRoot = await mkdtemp(join(tmpdir(), 'uclaw-repair-'));
+    const openPath = vi.fn().mockResolvedValue('');
+    try {
+      const result = await executeRepairAction({ id: 'export-diagnostics' }, {
+        gatewayManager: { restart: vi.fn() },
+        getDataRoot: () => dataRoot,
+        getLogDir: () => null,
+        openPath,
+        relaunch: vi.fn(),
+        quit: vi.fn(),
+        collectDiagnosticsText: vi.fn().mockResolvedValue('uclaw-support-diagnostics\nREMOTE_CONFIG_UNAVAILABLE'),
+      });
+
+      expect(result.filePath).toMatch(/uclaw-diagnostics-\d{8}-\d{6}\.txt$/);
+      expect(result.filePath).toContain(join(dataRoot, 'uclaw', 'diagnostics'));
+      await expect(readFile(result.filePath!, 'utf8')).resolves.toContain('REMOTE_CONFIG_UNAVAILABLE');
+      expect(openPath).toHaveBeenCalledWith(join(dataRoot, 'uclaw', 'diagnostics'));
+    } finally {
+      await rm(dataRoot, { recursive: true, force: true });
+    }
   });
 
   it('rejects unsupported repair actions', async () => {

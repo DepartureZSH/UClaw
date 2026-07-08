@@ -122,6 +122,7 @@ export function ErrorRepairPage({
         case 'restart-gateway':
         case 'open-log-folder':
         case 'open-data-root':
+        case 'export-diagnostics':
         case 'quit-app':
           await runRepairAction({ id: action.id });
           break;

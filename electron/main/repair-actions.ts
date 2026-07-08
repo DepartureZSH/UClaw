@@ -1,7 +1,10 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { recordMainRepairAction } from './diagnostics-context';
 
 export type MainRepairActionId =
   | 'copy-diagnostics'
+  | 'export-diagnostics'
   | 'open-log-folder'
   | 'open-data-root'
   | 'restart-gateway'
@@ -16,6 +19,7 @@ export interface MainRepairActionRequest {
 export interface MainRepairActionResult {
   success: true;
   copyText?: string;
+  filePath?: string;
 }
 
 export interface MainRepairActionContext {
@@ -57,6 +61,19 @@ export async function executeRepairAction(
       case 'copy-diagnostics':
         result = { success: true, copyText: await context.collectDiagnosticsText() };
         break;
+      case 'export-diagnostics': {
+        const dir = join(context.getDataRoot(), 'uclaw', 'diagnostics');
+        await mkdir(dir, { recursive: true });
+        const stamp = new Date().toISOString()
+          .replace(/[-:]/g, '')
+          .replace('T', '-')
+          .slice(0, 15);
+        const filePath = join(dir, `uclaw-diagnostics-${stamp}.txt`);
+        await writeFile(filePath, await context.collectDiagnosticsText(), 'utf8');
+        await context.openPath(dir);
+        result = { success: true, filePath };
+        break;
+      }
       case 'relaunch-app':
         context.relaunch();
         result = { success: true };
