@@ -173,6 +173,7 @@ Current commercial ZIP builds start directly with the in-window startup page. Th
 - Portable ZIP builds do not use in-app auto-install updates. Download the new ZIP, quit UClaw, then replace the program files; the bundled OpenClaw runtime updates with UClaw.
 - AI and web-search settings are synchronized from the managed company configuration service.
 - If the package credential is missing or expired, UClaw shows a **Company Key** page. End users only enter the company key provided by operations; they do not choose a workspace or manually enter API endpoints/API keys.
+- Legacy `/setup` links open the Company Key page for operations initialization or portable workbench rebinding; the workspace Setup Wizard is not part of the commercial ZIP user flow.
 
 > Web search note: UClaw uses Kimi/Moonshot-style web search through the New API service by default. End users should use the in-app one-click configuration or switching flow; they do not need to deploy their own endpoint or edit OpenClaw configuration files manually.
 
