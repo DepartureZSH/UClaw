@@ -66,6 +66,10 @@ publish:
 
 # macOS Configuration
 mac:
+  # GitHub ZIP builds are intentionally unsigned. Without this, electron-builder
+  # falls back to ad-hoc signing and can hit EMFILE while traversing the bundled
+  # OpenClaw/runtime tree.
+  identity: null
   extraResources:
     - from: resources/bin/darwin-${arch}
       to: bin
@@ -83,7 +87,7 @@ mac:
   gatekeeperAssess: false
   entitlements: entitlements.mac.plist
   entitlementsInherit: entitlements.mac.plist
-  notarize: true
+  notarize: false
   extendInfo:
     NSMicrophoneUsageDescription: UClaw requires microphone access for voice features
     NSCameraUsageDescription: UClaw requires camera access for video features
