@@ -50,6 +50,7 @@ export type StartupActionId =
   | 'open-data-root'
   | 'open-log-folder'
   | 'copy-diagnostics'
+  | 'export-diagnostics'
   | 'quit-app';
 
 export interface StartupAction {
@@ -97,6 +98,7 @@ export interface StartupActionRequest {
 export interface StartupActionResult {
   snapshot: StartupSnapshot;
   copyText?: string;
+  filePath?: string;
 }
 
 export const STARTUP_STEP_ORDER: StartupStepId[] = [

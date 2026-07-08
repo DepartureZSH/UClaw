@@ -1,5 +1,7 @@
 import { app, ipcMain, shell, type BrowserWindow } from 'electron';
 import { existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { GatewayManager, GatewayStatus } from '../gateway/manager';
 import { syncAllProviderAuthToRuntime, syncDefaultProviderToRuntime } from '../services/providers/provider-runtime-sync';
 import { getProviderService } from '../services/providers/provider-service';
@@ -104,6 +106,17 @@ function buildProgress(steps: StartupStepSnapshot[]): number {
     return sum;
   }, 0);
   return Math.min(100, Math.round((weighted / steps.length) * 100));
+}
+
+function withDiagnosticsExport(actions: StartupAction[] = []): StartupAction[] {
+  if (!actions.some((action) => action.id === 'copy-diagnostics')) return actions;
+  if (actions.some((action) => action.id === 'export-diagnostics')) return actions;
+  const copyIndex = actions.findIndex((action) => action.id === 'copy-diagnostics');
+  return [
+    ...actions.slice(0, copyIndex + 1),
+    { id: 'export-diagnostics', label: '导出诊断包' },
+    ...actions.slice(copyIndex + 1),
+  ];
 }
 
 function createIssue(
@@ -525,7 +538,7 @@ export class StartupProgressService {
       message,
       detail: options?.detail,
       issue: options?.issue,
-      actions: options?.actions ?? [],
+      actions: withDiagnosticsExport(options?.actions),
     };
     this.emit();
   }
@@ -1111,6 +1124,22 @@ export class StartupProgressService {
       }
       case 'copy-diagnostics': {
         return { snapshot: this.getSnapshot(), copyText: this.buildDiagnosticsText() };
+      }
+      case 'export-diagnostics': {
+        const dir = join(
+          this.lastContext?.storageDiagnostics.dataRoot ?? getConfiguredDataRoot(),
+          'uclaw',
+          'diagnostics',
+        );
+        await mkdir(dir, { recursive: true });
+        const stamp = new Date().toISOString()
+          .replace(/[-:]/g, '')
+          .replace('T', '-')
+          .slice(0, 15);
+        const filePath = join(dir, `uclaw-diagnostics-${stamp}.txt`);
+        await writeFile(filePath, this.buildDiagnosticsText(), 'utf8');
+        await shell.openPath(dir);
+        return { snapshot: this.getSnapshot(), filePath };
       }
       case 'quit-app':
         app.quit();

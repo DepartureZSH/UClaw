@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getAllSettingsMock = vi.fn();
@@ -201,9 +204,37 @@ describe('StartupProgressService', () => {
     });
     expect(snapshot.currentStep).toBe('remote-config-sync');
     expect(snapshot.actions.some((action) => action.id === 'enter-company-key')).toBe(true);
+    expect(snapshot.actions.some((action) => action.id === 'export-diagnostics')).toBe(true);
     expect(snapshot.steps.find((step) => step.id === 'provider-key-sync')?.status).toBe('skipped');
     expect(snapshot.steps.find((step) => step.id === 'gateway-start')?.status).toBe('skipped');
     expect(gatewayManager.start).not.toHaveBeenCalled();
+  });
+
+  it('exports startup diagnostics to the data-root diagnostics folder', async () => {
+    const { shell } = await import('electron');
+    const { StartupProgressService } = await import('@electron/main/startup-progress-service');
+    const dataRoot = await mkdtemp(join(tmpdir(), 'uclaw-startup-'));
+    const gatewayManager = new FakeGatewayManager();
+    const service = new StartupProgressService({
+      gatewayManager: gatewayManager as never,
+      getMainWindow: () => null,
+    });
+
+    try {
+      await service.runInitialStartup({
+        isE2EMode: false,
+        storageDiagnostics: { isAppTranslocated: false, dataRoot },
+      });
+
+      const result = await service.handleActionForTest({ id: 'export-diagnostics' });
+
+      expect(result.filePath).toContain(join(dataRoot, 'uclaw', 'diagnostics'));
+      expect(result.filePath).toMatch(/uclaw-diagnostics-\d{8}-\d{6}\.txt$/);
+      await expect(readFile(result.filePath!, 'utf8')).resolves.toContain('UClaw startup diagnostics');
+      expect(shell.openPath).toHaveBeenCalledWith(join(dataRoot, 'uclaw', 'diagnostics'));
+    } finally {
+      await rm(dataRoot, { recursive: true, force: true });
+    }
   });
 
   it('records startup repair action attempts and results', async () => {

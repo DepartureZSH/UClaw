@@ -30,6 +30,7 @@ function createSnapshot(overrides: Partial<StartupSnapshot> = {}): StartupSnapsh
       { id: 'restart-gateway', label: '重启 Gateway', variant: 'primary' },
       { id: 'open-log-folder', label: '查看日志' },
       { id: 'copy-diagnostics', label: '复制诊断信息' },
+      { id: 'export-diagnostics', label: '导出诊断包' },
     ],
     steps: STARTUP_STEP_ORDER.map((id) => ({
       id,
@@ -71,6 +72,7 @@ describe('StartupLoadingPage', () => {
     expect(screen.getByRole('button', { name: /重启 Gateway/ })).toBeVisible();
     expect(screen.getByRole('button', { name: /查看日志/ })).toBeVisible();
     expect(screen.getAllByRole('button', { name: /复制诊断信息/ })[0]).toBeVisible();
+    expect(screen.getByRole('button', { name: /导出诊断包/ })).toBeVisible();
   });
 
   it('copies diagnostics from the shared support package', async () => {
