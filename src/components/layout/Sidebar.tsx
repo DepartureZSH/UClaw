@@ -14,8 +14,6 @@ import {
   PanelLeftClose,
   PanelLeft,
   Plus,
-  Terminal,
-  ExternalLink,
   Trash2,
   Cpu,
   Pencil,
@@ -31,7 +29,6 @@ import { useAgentsStore } from '@/stores/agents';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { hostApiFetch } from '@/lib/host-api';
 import { useTranslation } from 'react-i18next';
 import logoSvg from '@/assets/logo.svg';
 
@@ -166,23 +163,6 @@ export function Sidebar() {
 
   const getSessionLabel = (key: string, displayName?: string, label?: string) =>
     sessionLabels[key] ?? label ?? displayName ?? key;
-
-  const openDevConsole = async () => {
-    try {
-      const result = await hostApiFetch<{
-        success: boolean;
-        url?: string;
-        error?: string;
-      }>('/api/gateway/control-ui');
-      if (result.success && result.url) {
-        window.electron.openExternal(result.url);
-      } else {
-        console.error('Failed to get Dev Console URL:', result.error);
-      }
-    } catch (err) {
-      console.error('Error opening Dev Console:', err);
-    }
-  };
 
   const { t } = useTranslation(['common', 'chat']);
   const [sessionToDelete, setSessionToDelete] = useState<{ key: string; label: string } | null>(null);
@@ -440,27 +420,6 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="p-2 mt-auto">
-        {isOnChat && (
-          <div
-            data-testid="sidebar-gateway-status"
-            className={cn(
-              'mb-2 rounded-lg border border-black/5 bg-white/35 px-2.5 py-2 text-[12px] dark:border-white/10 dark:bg-white/[0.04]',
-              sidebarCollapsed && 'flex justify-center px-0',
-            )}
-            title={`网关状态：${gatewaySidebarStatus.label}`}
-          >
-            <div className={cn('flex items-center gap-2', sidebarCollapsed && 'justify-center')}>
-              <span className={cn('h-2 w-2 shrink-0 rounded-full', gatewaySidebarStatus.className)} />
-              {!sidebarCollapsed && (
-                <>
-                  <span className="text-muted-foreground">网关状态</span>
-                  <span className="ml-auto font-medium text-foreground">{gatewaySidebarStatus.label}</span>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
         <NavLink
             to="/settings"
             data-testid="sidebar-nav-settings"
@@ -483,26 +442,24 @@ export function Sidebar() {
           )}
         </NavLink>
 
-        <Button
-          data-testid="sidebar-open-dev-console"
-          variant="ghost"
+        <div
+          data-testid="sidebar-gateway-status"
           className={cn(
-            'flex items-center gap-2.5 rounded-lg px-2.5 py-2 h-auto text-[14px] font-medium transition-colors w-full mt-1',
-            'hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80',
-            sidebarCollapsed ? 'justify-center px-0' : 'justify-start'
+            'mt-2 rounded-lg border border-black/5 bg-white/35 px-2.5 py-2 text-[12px] dark:border-white/10 dark:bg-white/[0.04]',
+            sidebarCollapsed && 'flex justify-center px-0',
           )}
-          onClick={openDevConsole}
+          title={`网关状态：${gatewaySidebarStatus.label}`}
         >
-          <div className="flex shrink-0 items-center justify-center text-muted-foreground">
-            <Terminal className="h-[18px] w-[18px]" strokeWidth={2} />
+          <div className={cn('flex items-center gap-2', sidebarCollapsed && 'justify-center')}>
+            <span className={cn('h-2 w-2 shrink-0 rounded-full', gatewaySidebarStatus.className)} />
+            {!sidebarCollapsed && (
+              <>
+                <span className="text-muted-foreground">网关状态</span>
+                <span className="ml-auto font-medium text-foreground">{gatewaySidebarStatus.label}</span>
+              </>
+            )}
           </div>
-          {!sidebarCollapsed && (
-            <>
-              <span className="flex-1 text-left overflow-hidden text-ellipsis whitespace-nowrap">{t('common:sidebar.openClawPage')}</span>
-              <ExternalLink className="h-3 w-3 shrink-0 ml-auto opacity-50 text-muted-foreground" />
-            </>
-          )}
-        </Button>
+        </div>
       </div>
 
       <ConfirmDialog

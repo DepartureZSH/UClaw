@@ -93,17 +93,18 @@ describe('Sidebar', () => {
     chatState.sessionLabels = { 'agent:main:session-1': '原会话' };
   });
 
-  it('pins the gateway status at the lower side of the chat sidebar', () => {
+  it('pins the gateway status at the lower side of the sidebar on every main page', () => {
     gatewayState.status = { state: 'starting', port: 18789, gatewayReady: false };
 
     render(
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter initialEntries={['/models']}>
         <Sidebar />
       </MemoryRouter>,
     );
 
     expect(screen.getByTestId('sidebar-gateway-status')).toHaveTextContent('网关状态');
     expect(screen.getByTestId('sidebar-gateway-status')).toHaveTextContent('重启中');
+    expect(screen.queryByRole('button', { name: 'OpenClaw 页面' })).not.toBeInTheDocument();
   });
 
   it('renames a session from the sidebar', () => {
